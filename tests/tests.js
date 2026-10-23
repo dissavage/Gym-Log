@@ -607,6 +607,45 @@
   });
 
   /* ════════════════════════════════════
+     DEMO DATA
+     ════════════════════════════════════ */
+  suite('Demo data', () => {
+    const { demo } = HL;
+    const a = demo.generateDemo({ today: '2026-10-23', days: 182, seed: 7 });
+    const b = demo.generateDemo({ today: '2026-10-23', days: 182, seed: 7 });
+    const strip = e => ({ ...e, id: null, createdAt: null, updatedAt: null, tz: null, values: JSON.parse(JSON.stringify(e.values, (k, v) => (k === 'id' || k === 'itemId' ? null : v))) });
+    const byType = t => a.entries.filter(e => e.type === t);
+    test('deterministic for a given seed and date', () => assert.eq(a.entries.map(strip), b.entries.map(strip)));
+    test('every record is tagged as demo', () => assert.ok([...a.entries, ...a.checklistItems].every(demo.isDemo)));
+    test('covers ~6 months ending yesterday', () => {
+      const days = a.entries.map(e => e.dayKey).sort();
+      assert.eq([days[0], days.at(-1)], ['2026-04-24', '2026-10-22']);
+    });
+    test('realistic volume per tracker', () => {
+      assert.ok(byType('workout').length > 90 && byType('workout').length < 110, `workouts ${byType('workout').length}`);
+      assert.ok(byType('body').length > 130, 'weigh-ins');
+      assert.eq(byType('nutrition').length, 182 * 3);
+      assert.eq(byType('sleep').length, 182);
+    });
+    test('workouts only use library exercises and progress over time', () => {
+      const ids = new Set(schema.BUILTIN_EXERCISES.map(e => e.id));
+      assert.ok(byType('workout').every(w => w.values.exercises.every(x => ids.has(x.exerciseId))));
+      const idx = domain.exerciseIndex(byType('workout'));
+      const bench = idx.get('ex-barbell-bench-press');
+      assert.ok(domain.personalBests(bench.slice(-3)).weight > domain.personalBests(bench.slice(0, 3)).weight);
+    });
+    test('supplement logs point at the demo checklist items', () => {
+      const items = new Set(a.checklistItems.map(i => i.id));
+      assert.ok(byType('supplements').every(e => items.has(e.values.itemId)));
+    });
+    test('sleep durations are plausible', () => {
+      const t = tracker('sleep');
+      const mins = byType('sleep').map(e => domain.withComputed(t, e.values).duration);
+      assert.ok(mins.every(m => m >= 300 && m <= 600), `range ${Math.min(...mins)}–${Math.max(...mins)}`);
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');

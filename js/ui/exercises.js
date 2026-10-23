@@ -190,5 +190,5 @@
     });
   }
 
-  HL.exercises = { pick, edit, muscleNames, MUSCLE_NAME };
+  HL.exercises = { pick, edit, muscleNames };
 })(globalThis.HL = globalThis.HL || {});

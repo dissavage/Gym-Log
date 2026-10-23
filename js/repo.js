@@ -228,7 +228,7 @@
      SETTINGS — small, synchronous, so localStorage (namespaced away from the old app)
      ════════════════════════════════════ */
   const SETTINGS_KEY = 'healthlog.settings';
-  const DEFAULTS = { units: { ...units.SYSTEMS.imperial }, effort: 'rpe', weekStart: 1, restSec: 90, plateStep: 'standard' };
+  const DEFAULTS = { units: { ...units.SYSTEMS.imperial }, effort: 'rpe', weekStart: 1, restSec: 90, plateStep: 'standard', theme: 'dark' };
   let settings = loadSettings();
 
   function loadSettings() {

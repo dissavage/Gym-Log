@@ -114,10 +114,7 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
-
   /* ── DOM ── */
-  const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
   function debounce(fn, ms) {
@@ -128,6 +125,6 @@
   HL.util = {
     esc, uuid, localISO, dayKey, dayKeyOf, parseDayKey, addDays, daysBetween, weekStartOf, tzName,
     fmtDay, fmtTime, fmtClock, fmtDuration, toInputDateTime,
-    round, fmtNum, parseNum, clamp, $, $$, debounce,
+    round, fmtNum, parseNum, $$, debounce,
   };
 })(globalThis.HL = globalThis.HL || {});

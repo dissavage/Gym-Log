@@ -225,11 +225,61 @@
           ${isIOS() && !isStandalone() ? `<p class="small notice-text">📲 On iPhone, install Health Log: tap Share, then <b>Add to Home Screen</b>. The installed app keeps its own data, separate from Safari — install first, then import.</p>` : ''}
         </div></div>
       </section>
+      ${demoHtml()}
       <section class="settings-section" aria-labelledby="danger-h">
         <h2 class="section-label" id="danger-h">Danger zone</h2>
         <button type="button" class="btn btn-danger btn-block" data-act="wipe">Delete all data…</button>
       </section>
       <p class="field-hint about">Health Log · data schema v${schema.SCHEMA_VERSION} · everything stays on this device</p>`;
+  }
+
+  /* ════════════════════════════════════
+     DEMO DATA — clearly labelled, removable in one tap
+     ════════════════════════════════════ */
+  const demoRecords = () => ['entries', 'checklistItems'].flatMap(store =>
+    repo.all(store, { deleted: true }).filter(HL.demo.isDemo).map(record => ({ store, record })));
+
+  function demoHtml() {
+    const n = demoRecords().filter(x => x.store === 'entries').length;
+    return `
+      <section class="settings-section" aria-labelledby="demo-h">
+        <h2 class="section-label" id="demo-h">Demo data</h2>
+        <div class="settings-card">
+          ${n ? `
+          <button type="button" class="settings-row settings-link" data-act="demo-remove">
+            <span><span class="settings-lbl">Remove demo data</span><span class="settings-sub">${n.toLocaleString()} sample logs — your own logs stay</span></span>
+            <span aria-hidden="true" class="muted">✕</span></button>` : `
+          <button type="button" class="settings-row settings-link" data-act="demo-load">
+            <span><span class="settings-lbl">Load demo data</span><span class="settings-sub">6 months of sample logs to explore the charts</span></span>
+            <span aria-hidden="true" class="muted">›</span></button>`}
+        </div>
+      </section>`;
+  }
+
+  function openLoadDemo() {
+    const real = repo.entries().filter(e => !HL.demo.isDemo(e)).length;
+    HL.sheet.open({
+      title: 'Load demo data', icon: '🧪',
+      body: `
+        <p class="block-gap">Adds about 6 months of made-up workouts, weigh-ins, meals, sleep and more — each one marked as demo — so you can see how the charts and PRs look with real history.</p>
+        ${real ? `<p class="notice">⚠ You already have ${real.toLocaleString()} log${real === 1 ? '' : 's'} of your own. Demo logs will mix into your charts until you remove them (More → Remove demo data). Your own logs are never touched.</p>` : ''}`,
+      footer: '<button type="button" class="btn btn-ghost" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary">Load demo data</button>',
+      onMount: api => api.form.addEventListener('click', e => { if (e.target.closest('[data-act="cancel"]')) api.close(); }),
+      onSubmit: async (form, api) => {
+        api.close();
+        const { entries, checklistItems } = HL.demo.generateDemo();
+        repo.importRecords([...checklistItems.map(record => ({ store: 'checklistItems', record })), ...entries.map(record => ({ store: 'entries', record }))]);
+        await repo.flushNow().catch(() => {});
+        HL.toast(`Loaded ${entries.length.toLocaleString()} demo logs — remove them anytime from More`);
+      },
+    });
+  }
+
+  async function removeDemo() {
+    const items = demoRecords();
+    for (const { store, record } of items) repo.hardDelete(store, record.id);
+    await repo.flushNow().catch(() => {});
+    HL.toast(`Removed ${items.filter(x => x.store === 'entries').length.toLocaleString()} demo logs`);
   }
 
   // Returns true when the click was handled here
@@ -241,6 +291,8 @@
       case 'csv': openCSV(); return true;
       case 'legacy': HL.legacyImport.open(); return true;
       case 'wipe': openWipe(); return true;
+      case 'demo-load': openLoadDemo(); return true;
+      case 'demo-remove': removeDemo(); return true;
       case 'persist':
         requestPersist().then(() => fillStorage(document.getElementById('storage-box')));
         return true;
@@ -257,7 +309,7 @@
 
   // Today banner: no backup in 14+ days (counted from the first log if never exported)
   function reminderHtml() {
-    const entries = repo.entries();
+    const entries = repo.entries().filter(e => !HL.demo.isDemo(e));
     if (!entries.length) return '';
     const today = util.dayKey();
     const snooze = repo.getMeta('backupSnoozeUntil');
@@ -289,5 +341,5 @@
       </div>`;
   }
 
-  HL.data = { sectionHtml, onClick, fillStorage, requestPersist, reminderHtml, installHintHtml, exportBackup, importText, deliver, pickFile };
+  HL.data = { sectionHtml, onClick, fillStorage, requestPersist, reminderHtml, installHintHtml, pickFile };
 })(globalThis.HL = globalThis.HL || {});

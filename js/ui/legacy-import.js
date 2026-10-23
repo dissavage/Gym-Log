@@ -125,5 +125,5 @@
     repo.put('trackers', t);
   }
 
-  HL.legacyImport = { open, fromText };
+  HL.legacyImport = { open };
 })(globalThis.HL = globalThis.HL || {});

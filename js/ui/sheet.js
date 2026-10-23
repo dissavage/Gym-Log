@@ -95,7 +95,5 @@
     handle.addEventListener('pointercancel', end);
   }
 
-  const closeAll = () => [...stack].reverse().forEach(s => s.api.close());
-
-  HL.sheet = { open, closeAll, isOpen: () => stack.length > 0 };
+  HL.sheet = { open };
 })(globalThis.HL = globalThis.HL || {});

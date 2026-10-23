@@ -396,12 +396,12 @@
   const activityLevel = n => (n <= 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 5 ? 3 : 4);
 
   HL.domain = {
-    COMPUTED, withComputed, isNumericField, fieldNumber, aggregate, goalProgress,
+    withComputed, isNumericField, aggregate, goalProgress,
     formatField, summarizeEntry, quickChips,
     FIELD_KINDS, DIM_STEPS, fieldDefaults, slugify, uniqueKey, validateTracker,
-    E1RM_MAX_REPS, e1rm, countsForPR, isWorkingSet, sessionVolume, exerciseIndex,
+    e1rm, countsForPR, isWorkingSet, sessionVolume, exerciseIndex,
     personalBests, addToBests, setPRs, sessionPRs, matchingSet, formatSet, workoutSummary,
     exerciseProgress, prLog,
-    RANGE_DAYS, rangeStart, dailySeries, movingAverage, weeklyMuscleSets, streaks, activityLevel,
+    rangeStart, dailySeries, movingAverage, weeklyMuscleSets, streaks, activityLevel,
   };
 })(globalThis.HL = globalThis.HL || {});

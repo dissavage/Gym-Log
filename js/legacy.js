@@ -289,5 +289,5 @@
     return { exercises: newExercises, entries, templates, draft, macroGoals, report };
   }
 
-  HL.legacy = { SOURCE, mapLegacy, norm, ALIASES };
+  HL.legacy = { mapLegacy };
 })(globalThis.HL = globalThis.HL || {});

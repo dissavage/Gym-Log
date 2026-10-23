@@ -6,7 +6,7 @@
 
   // A script that failed to download (e.g. a CDN 503 mid-deploy) would otherwise leave
   // buttons that silently do nothing — stop and offer a reload instead.
-  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'backup', 'data', 'legacy', 'legacyImport', 'views'];
+  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'backup', 'data', 'legacy', 'legacyImport', 'demo', 'views'];
   const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
   const missing = REQUIRED.filter(k => !HL[k]).concat(VIEWS.filter(v => !HL.views?.[v]));
   if (missing.length) {
@@ -103,6 +103,18 @@
   }
 
   /* ════════════════════════════════════
+     THEME — dark by default; "auto" follows the phone
+     ════════════════════════════════════ */
+  const lightQuery = window.matchMedia('(prefers-color-scheme: light)');
+
+  function applyTheme() {
+    const pref = repo.getSettings().theme;
+    const theme = pref === 'auto' ? (lightQuery.matches ? 'light' : 'dark') : pref;
+    document.documentElement.dataset.theme = theme;
+    document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f5f4f1' : '#0f0f0f';
+  }
+
+  /* ════════════════════════════════════
      OFFLINE / UPDATES — a new version waits for a tap instead of silently swapping code
      ════════════════════════════════════ */
   function showUpdateBanner(worker) {
@@ -163,7 +175,8 @@
     });
 
     repo.on('change', ({ store }) => markDirty(store));
-    repo.on('settings', () => markDirty(null));
+    repo.on('settings', () => { applyTheme(); markDirty(null); });
+    lightQuery.addEventListener('change', () => { applyTheme(); markDirty(null); });
     repo.on('writestatus', showWriteBanner);
     repo.on('error', ({ message }) => HL.toast(message, { kind: 'error' }));
 
@@ -194,6 +207,7 @@
       return;
     }
     wire();
+    applyTheme();
     for (const name of VIEWS) HL.views[name]?.init?.();
     show('today');
     registerServiceWorker();

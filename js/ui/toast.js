@@ -13,7 +13,8 @@
     root.innerHTML = '';
     const el = document.createElement('div');
     el.className = `toast ${kind}`;
-    el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    // #toast-root is already a polite live region; errors interrupt as alerts
+    if (kind === 'error') el.setAttribute('role', 'alert');
     el.innerHTML = `
       <span class="toast-icon" aria-hidden="true">${ICONS[kind] || ''}</span>
       <span class="toast-msg">${kind === 'error' ? '<span class="sr-only">Error: </span>' : ''}${HL.util.esc(msg)}</span>

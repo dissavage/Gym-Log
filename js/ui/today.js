@@ -229,7 +229,8 @@
 
   function focusChecklist() {
     const card = document.getElementById('supp-h');
-    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    card?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
     const first = document.querySelector('[data-check]') || document.querySelector('[data-act="manage-items"]');
     first?.focus({ preventScroll: true });
   }
@@ -353,5 +354,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.today = { title: 'Today', stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts', 'meta'], render, onClick };
+  HL.views.today = { stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts', 'meta'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

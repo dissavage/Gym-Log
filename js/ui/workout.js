@@ -880,7 +880,7 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.workout = { title: 'Workout', stores: ['exercises', 'templates', 'entries'], render, onClick, onInput, onChange, init };
+  HL.views.workout = { stores: ['exercises', 'templates', 'entries'], render, onClick, onInput, onChange, init };
   HL.workout = {
     editEntry,
     current: () => { loadDraft(); return draft; },

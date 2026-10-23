@@ -33,9 +33,10 @@
         ${HL.trackers.listHtml()}
       </section>
       <section class="settings-section" aria-labelledby="units-h">
-        <h2 class="section-label" id="units-h">Units</h2>
+        <h2 class="section-label" id="units-h">Display</h2>
         <div class="settings-card">
           ${segRow('system', 'Measurement system', 'Data is stored in metric; this only changes display', systemOf(s.units), [['imperial', 'lb · oz'], ['metric', 'kg · ml']])}
+          ${segRow('theme', 'Theme', 'Auto follows your phone', s.theme, [['dark', 'Dark'], ['light', 'Light'], ['auto', 'Auto']])}
         </div>
       </section>
       <section class="settings-section" aria-labelledby="wo-h">
@@ -57,7 +58,7 @@
   function onChange(e) {
     const { name, value } = e.target;
     if (name === 'system') repo.setSettings({ units: { ...units.SYSTEMS[value] } });
-    if (name === 'effort' || name === 'plateStep') repo.setSettings({ [name]: value });
+    if (name === 'effort' || name === 'plateStep' || name === 'theme') repo.setSettings({ [name]: value });
     if (name === 'restSec') repo.setSettings({ restSec: Number(value) });
   }
 
@@ -67,5 +68,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.more = { title: 'More', stores: ['trackers', 'meta'], render, onChange, onClick };
+  HL.views.more = { stores: ['trackers', 'meta', 'entries', 'checklistItems'], render, onChange, onClick };
 })(globalThis.HL = globalThis.HL || {});

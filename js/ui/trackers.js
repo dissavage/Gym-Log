@@ -313,5 +313,5 @@
     });
   }
 
-  HL.trackers = { listHtml, onClick, openBuilder };
+  HL.trackers = { listHtml, onClick };
 })(globalThis.HL = globalThis.HL || {});

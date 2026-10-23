@@ -105,5 +105,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.history = { title: 'History', stores: ['entries', 'trackers', 'exercises'], render, onClick };
+  HL.views.history = { stores: ['entries', 'trackers', 'exercises'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

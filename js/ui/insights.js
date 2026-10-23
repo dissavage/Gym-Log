@@ -211,7 +211,7 @@
 
   const bodyweightLegend = () => [
     { label: 'Daily weigh-in', color: HL.charts.token('--muted'), dots: true },
-    { label: '7-day average', color: HL.charts.token('--accent') },
+    { label: '7-day average', color: HL.charts.token('--chart-1') },
   ];
 
   /* ── Any numeric field ── */
@@ -289,7 +289,7 @@
   const axis = (points, today) => ({ xMin: domain.rangeStart(range, today) || points[0]?.dayKey, xMax: today });
 
   function drawAll(el, today) {
-    const accent = HL.charts.token('--accent');
+    const accent = HL.charts.token('--chart-1');
     const bwBox = el.querySelector('[data-chart="bodyweight"]');
     if (bwBox) {
       const s = bodyweightSeries(today);
@@ -383,7 +383,7 @@
         sheetEl = api.el;
         const box = api.body.querySelector('[data-chart="exercise"]');
         const draw = () => HL.charts.draw(box, {
-          series: [{ label: hasE1rm ? 'Est. 1RM' : 'Best reps', color: HL.charts.token('--accent'), fill: true, points }],
+          series: [{ label: hasE1rm ? 'Est. 1RM' : 'Best reps', color: HL.charts.token('--chart-1'), fill: true, points }],
           formatY: v => (hasE1rm ? `${util.fmtNum(v, 0)} ${unit}` : `${v} reps`),
           ...axis(points, today),
         });
@@ -462,5 +462,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.insights = { title: 'Insights', stores: ['entries', 'trackers', 'exercises'], render, onClick, onChange };
+  HL.views.insights = { stores: ['entries', 'trackers', 'exercises'], render, onClick, onChange };
 })(globalThis.HL = globalThis.HL || {});

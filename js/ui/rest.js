@@ -120,5 +120,5 @@
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); });
 
-  HL.rest = { bind, start, adjust, stop, sync, unlockAudio };
+  HL.rest = { bind, start, stop, unlockAudio };
 })(globalThis.HL = globalThis.HL || {});

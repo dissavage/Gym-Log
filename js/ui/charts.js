@@ -159,5 +159,5 @@
     }
   }
 
-  HL.charts = { load, line, draw, destroy, destroyIn, legendHtml, tableHtml, token };
+  HL.charts = { draw, destroyIn, legendHtml, tableHtml, token };
 })(globalThis.HL = globalThis.HL || {});
