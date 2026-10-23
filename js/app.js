@@ -6,8 +6,9 @@
 
   // A script that failed to download (e.g. a CDN 503 mid-deploy) would otherwise leave
   // buttons that silently do nothing — stop and offer a reload instead.
-  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'views'];
-  const missing = REQUIRED.filter(k => !HL[k]);
+  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'views'];
+  const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
+  const missing = REQUIRED.filter(k => !HL[k]).concat(VIEWS.filter(v => !HL.views?.[v]));
   if (missing.length) {
     document.querySelector('main').innerHTML = `
       <div class="view"><div class="empty-state" role="alert">
@@ -21,11 +22,6 @@
   }
 
   const { util, repo } = HL;
-  const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
-  const PLACEHOLDERS = {
-    history:  ['📋', 'History', 'A searchable feed of everything you log arrives in Phase 3.'],
-    insights: ['📈', 'Insights', 'PRs, weekly volume and trend charts arrive in Phase 3.'],
-  };
 
   let active = 'today';
   let currentDay = util.dayKey();
@@ -47,16 +43,8 @@
 
   function renderView(name) {
     const el = viewEl(name);
-    const view = HL.views[name];
     const key = focusKey(el);
-    if (view) {
-      view.render(el);
-    } else {
-      const [icon, title, msg] = PLACEHOLDERS[name];
-      el.innerHTML = `
-        <header class="page-head"><div><h1 class="page-title">${title}</h1></div></header>
-        <div class="empty-state"><span class="empty-icon" aria-hidden="true">${icon}</span><strong>Coming soon</strong>${msg}</div>`;
-    }
+    HL.views[name].render(el);
     dirty.delete(name);
     if (key) el.querySelector(key)?.focus({ preventScroll: true });
   }

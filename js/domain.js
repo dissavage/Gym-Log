@@ -229,10 +229,113 @@
     };
   }
 
+  // Per-session progress points for an exercise chart: best est. 1RM, top weight, volume
+  function exerciseProgress(sessions) {
+    return sessions.map(s => {
+      const counted = s.sets.filter(countsForPR);
+      const best = Math.max(0, ...counted.map(x => e1rm(x.weightKg || 0, x.reps) || 0));
+      return {
+        dayKey: s.dayKey, e1rm: best || null,
+        topWeight: Math.max(0, ...counted.map(x => x.weightKg || 0)) || null,
+        volume: sessionVolume(s.sets),
+      };
+    });
+  }
+
+  // Chronological PR events; the first session is the baseline
+  function prLog(sessions) {
+    const log = [];
+    for (let i = 1; i < sessions.length; i++) {
+      for (const p of sessionPRs(sessions.slice(0, i), sessions[i].sets)) log.push({ dayKey: sessions[i].dayKey, ...p });
+    }
+    return log;
+  }
+
+  /* ════════════════════════════════════
+     TRENDS — series, moving average, weekly volume, streaks
+     ════════════════════════════════════ */
+  const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 };
+
+  // First day included in a range ending today; null = all time
+  const rangeStart = (range, today) => (RANGE_DAYS[range] ? util.addDays(today, -(RANGE_DAYS[range] - 1)) : null);
+
+  // One point per day: the field's daily aggregate, oldest first
+  function dailySeries(tracker, entries, fieldKey, fromDay = null) {
+    const byDay = new Map();
+    for (const e of entries) {
+      if (e.deletedAt || (fromDay && e.dayKey < fromDay)) continue;
+      if (!byDay.has(e.dayKey)) byDay.set(e.dayKey, []);
+      byDay.get(e.dayKey).push(e);
+    }
+    return [...byDay.keys()].sort()
+      .map(dayKey => ({ dayKey, value: aggregate(tracker, byDay.get(dayKey), fieldKey) }))
+      .filter(p => p.value != null);
+  }
+
+  // Trailing average over the previous `days` calendar days (not the previous N points),
+  // so gaps in logging don't stretch the window.
+  function movingAverage(points, days = 7) {
+    const out = [];
+    let start = 0;
+    let sum = 0;
+    for (let i = 0; i < points.length; i++) {
+      sum += points[i].value;
+      while (util.daysBetween(points[start].dayKey, points[i].dayKey) >= days) sum -= points[start++].value;
+      out.push({ dayKey: points[i].dayKey, value: points[i].value, avg: sum / (i - start + 1) });
+    }
+    return out;
+  }
+
+  /**
+   * Working sets per muscle per week. Working + failure sets count; warm-ups and drops don't.
+   * Each primary muscle gets 1, each secondary gets `secondaryWeight` (default ½).
+   * Returns Map weekStartDayKey → { muscleId: sets }.
+   */
+  function weeklyMuscleSets(workoutEntries, exercisesById, { weekStart = 1, secondaryWeight = 0.5 } = {}) {
+    const weeks = new Map();
+    for (const e of workoutEntries) {
+      if (e.deletedAt) continue;
+      const wk = util.weekStartOf(e.dayKey, weekStart);
+      if (!weeks.has(wk)) weeks.set(wk, {});
+      const tally = weeks.get(wk);
+      for (const ex of e.values?.exercises || []) {
+        const def = exercisesById.get(ex.exerciseId);
+        if (!def) continue;
+        const n = (ex.sets || []).filter(isWorkingSet).length;
+        if (!n) continue;
+        for (const m of def.primary) tally[m] = (tally[m] || 0) + n;
+        for (const m of def.secondary || []) tally[m] = (tally[m] || 0) + n * secondaryWeight;
+      }
+    }
+    return weeks;
+  }
+
+  // Current streak counts back from today — or from yesterday while today is still empty
+  function streaks(dayKeys, today) {
+    const days = new Set(dayKeys);
+    let current = 0;
+    let d = days.has(today) ? today : util.addDays(today, -1);
+    while (days.has(d)) { current++; d = util.addDays(d, -1); }
+    let longest = 0;
+    let run = 0;
+    let prev = null;
+    for (const k of [...days].sort()) {
+      run = prev && util.daysBetween(prev, k) === 1 ? run + 1 : 1;
+      longest = Math.max(longest, run);
+      prev = k;
+    }
+    return { current, longest, total: days.size };
+  }
+
+  // Heat-map intensity 0–4 from a day's log count
+  const activityLevel = n => (n <= 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 5 ? 3 : 4);
+
   HL.domain = {
     COMPUTED, withComputed, isNumericField, fieldNumber, aggregate, goalProgress,
     formatField, summarizeEntry,
     E1RM_MAX_REPS, e1rm, countsForPR, isWorkingSet, sessionVolume, exerciseIndex,
     personalBests, addToBests, setPRs, sessionPRs, matchingSet, formatSet, workoutSummary,
+    exerciseProgress, prLog,
+    RANGE_DAYS, rangeStart, dailySeries, movingAverage, weeklyMuscleSets, streaks, activityLevel,
   };
 })(globalThis.HL = globalThis.HL || {});

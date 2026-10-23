@@ -293,6 +293,99 @@
   });
 
   /* ════════════════════════════════════
+     TRENDS
+     ════════════════════════════════════ */
+  suite('Moving average & series', () => {
+    const P = (dayKey, value) => ({ dayKey, value });
+    test('7-day trailing average over consecutive days', () => {
+      const pts = [1, 2, 3, 4, 5, 6, 7, 8].map((v, i) => P(util.addDays('2026-10-01', i), v));
+      const ma = domain.movingAverage(pts, 7);
+      assert.eq(ma[0].avg, 1);
+      assert.near(ma[6].avg, 4);
+      assert.near(ma[7].avg, 5, 1e-9, 'day 8 drops day 1');
+    });
+    test('window is calendar days, so a gap shrinks it instead of reaching back', () => {
+      const ma = domain.movingAverage([P('2026-10-01', 80), P('2026-10-02', 82), P('2026-10-20', 90)], 7);
+      assert.eq(ma[2].avg, 90);
+      assert.eq(ma[1].avg, 81);
+    });
+    test('empty input', () => assert.eq(domain.movingAverage([], 7), []));
+    test('dailySeries aggregates per day and skips deleted / out-of-range', () => {
+      const t = tracker('nutrition');
+      const es = [
+        { dayKey: '2026-10-01', timestamp: '2026-10-01T08:00:00.000-07:00', values: { calories: 500 } },
+        { dayKey: '2026-10-01', timestamp: '2026-10-01T19:00:00.000-07:00', values: { calories: 700 } },
+        { dayKey: '2026-10-02', timestamp: '2026-10-02T08:00:00.000-07:00', values: { calories: 900 }, deletedAt: '2026-10-02T09:00:00Z' },
+        { dayKey: '2026-09-20', timestamp: '2026-09-20T08:00:00.000-07:00', values: { calories: 300 } },
+      ];
+      assert.eq(domain.dailySeries(t, es, 'calories', '2026-09-25'), [{ dayKey: '2026-10-01', value: 1200 }]);
+    });
+    test('rangeStart counts today as day 1', () => {
+      assert.eq(domain.rangeStart('7d', '2026-10-22'), '2026-10-16');
+      assert.eq(domain.rangeStart('all', '2026-10-22'), null);
+    });
+  });
+
+  suite('Weekly sets per muscle', () => {
+    const exById = new Map([
+      ['bench', { primary: ['chest'], secondary: ['triceps', 'front_delts'] }],
+      ['dl', { primary: ['glutes', 'hamstrings'], secondary: [] }],
+    ]);
+    const wo = (dayKey, exercises) => ({ dayKey, values: { exercises } });
+    const entries = [
+      wo('2026-10-19', [{ exerciseId: 'bench', sets: [S(60, 10, 'warmup'), S(100, 5), S(100, 5), S(100, 4, 'failure'), S(80, 8, 'drop')] }]),
+      wo('2026-10-25', [{ exerciseId: 'dl', sets: [S(140, 5), S(140, 5, 'working', false)] }]),
+      wo('2026-10-26', [{ exerciseId: 'bench', sets: [S(100, 5)] }]),
+    ];
+    const weeks = domain.weeklyMuscleSets(entries, exById, { weekStart: 1 });
+    test('weeks start on Monday', () => assert.eq([...weeks.keys()].sort(), ['2026-10-19', '2026-10-26']));
+    test('working + failure count; warm-up, drop and unticked don\'t', () => assert.eq(weeks.get('2026-10-19').chest, 3));
+    test('secondary muscles count half', () => assert.eq(weeks.get('2026-10-19').triceps, 1.5));
+    test('multiple primaries each get the full count', () => {
+      assert.eq(weeks.get('2026-10-19').glutes, 1);
+      assert.eq(weeks.get('2026-10-19').hamstrings, 1);
+    });
+    test('Sunday start puts Sunday in the next week', () => {
+      const sun = domain.weeklyMuscleSets(entries, exById, { weekStart: 0 });
+      assert.ok(sun.has('2026-10-25'));
+    });
+    test('weekStartOf', () => {
+      assert.eq(util.weekStartOf('2026-10-22', 1), '2026-10-19');
+      assert.eq(util.weekStartOf('2026-10-19', 1), '2026-10-19');
+      assert.eq(util.weekStartOf('2026-10-25', 1), '2026-10-19');
+      assert.eq(util.weekStartOf('2026-10-22', 0), '2026-10-18');
+    });
+  });
+
+  suite('Streaks & PR log', () => {
+    test('current streak counts back from today', () =>
+      assert.eq(domain.streaks(['2026-10-20', '2026-10-21', '2026-10-22'], '2026-10-22').current, 3));
+    test('streak survives while today is still empty', () =>
+      assert.eq(domain.streaks(['2026-10-20', '2026-10-21'], '2026-10-22').current, 2));
+    test('a missed day breaks the streak', () =>
+      assert.eq(domain.streaks(['2026-10-19', '2026-10-21'], '2026-10-23').current, 0));
+    test('longest streak and total days', () => {
+      const s = domain.streaks(['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-10', '2026-10-22'], '2026-10-22');
+      assert.eq([s.longest, s.total, s.current], [3, 5, 1]);
+    });
+    test('heat-map levels', () => assert.eq([0, 1, 2, 3, 4, 5, 9].map(domain.activityLevel), [0, 1, 2, 2, 3, 3, 4]));
+    test('PR log skips the baseline session and is chronological', () => {
+      const sessions = [
+        { dayKey: '2026-10-01', sets: [S(100, 5)] },
+        { dayKey: '2026-10-05', sets: [S(100, 5)] },
+        { dayKey: '2026-10-08', sets: [S(105, 5)] },
+      ];
+      const log = domain.prLog(sessions);
+      assert.eq(log.map(x => `${x.dayKey}:${x.type}`), ['2026-10-08:weight', '2026-10-08:e1rm', '2026-10-08:volume']);
+    });
+    test('exercise progress picks the best est. 1RM per session', () => {
+      const prog = domain.exerciseProgress([{ dayKey: '2026-10-01', sets: [S(100, 5), S(90, 10), S(60, 12, 'warmup')] }]);
+      assert.near(prog[0].e1rm, 120);
+      assert.eq(prog[0].topWeight, 100);
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');

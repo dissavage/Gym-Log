@@ -57,6 +57,12 @@
     return Math.round((parseDayKey(b) - parseDayKey(a)) / 86400000);
   }
 
+  // First day of the week containing `key`; weekStart 0 = Sunday, 1 = Monday
+  function weekStartOf(key, weekStart = 1) {
+    const dow = parseDayKey(key).getDay();
+    return addDays(key, -((dow - weekStart + 7) % 7));
+  }
+
   function tzName() {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
   }
@@ -120,7 +126,7 @@
   }
 
   HL.util = {
-    esc, uuid, localISO, dayKey, dayKeyOf, parseDayKey, addDays, daysBetween, tzName,
+    esc, uuid, localISO, dayKey, dayKeyOf, parseDayKey, addDays, daysBetween, weekStartOf, tzName,
     fmtDay, fmtTime, fmtClock, fmtDuration, toInputDateTime,
     round, fmtNum, parseNum, clamp, $, $$, debounce,
   };
