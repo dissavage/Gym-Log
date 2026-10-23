@@ -4,6 +4,22 @@
 (function (HL) {
   'use strict';
 
+  // A script that failed to download (e.g. a CDN 503 mid-deploy) would otherwise leave
+  // buttons that silently do nothing — stop and offer a reload instead.
+  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'views'];
+  const missing = REQUIRED.filter(k => !HL[k]);
+  if (missing.length) {
+    document.querySelector('main').innerHTML = `
+      <div class="view"><div class="empty-state" role="alert">
+        <span class="empty-icon" aria-hidden="true">⚠</span>
+        <strong>Part of the app didn't download</strong>
+        Usually a brief network or server hiccup. Your data is safe — reload to fix it.
+        <p class="block-top"><button type="button" class="btn btn-primary" id="fatal-retry">Reload</button></p>
+      </div></div>`;
+    document.getElementById('fatal-retry').addEventListener('click', () => location.reload());
+    return;
+  }
+
   const { util, repo } = HL;
   const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
   const PLACEHOLDERS = {
@@ -120,6 +136,11 @@
     repo.on('settings', () => markDirty(null));
     repo.on('writestatus', showWriteBanner);
     repo.on('error', ({ message }) => HL.toast(message, { kind: 'error' }));
+
+    // Never fail silently: surface unexpected errors (data already saved stays saved)
+    const report = err => HL.toast(`Something went wrong: ${err?.message || err}. Try again or reload.`, { kind: 'error', duration: 8000 });
+    window.addEventListener('error', e => report(e.error || e.message));
+    window.addEventListener('unhandledrejection', e => report(e.reason));
 
     // Get queued writes to disk before iOS suspends or kills the page
     const flushIfHidden = () => { if (document.visibilityState === 'hidden') repo.flush(); };
