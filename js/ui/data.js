@@ -239,7 +239,7 @@
       case 'export': exportBackup(); return true;
       case 'import': startImport(); return true;
       case 'csv': openCSV(); return true;
-      case 'legacy': HL.legacyImport ? HL.legacyImport.open() : HL.toast('Old Gym Tracker import is coming next — first we need a sample of your data', { kind: 'info', duration: 5000 }); return true;
+      case 'legacy': HL.legacyImport.open(); return true;
       case 'wipe': openWipe(); return true;
       case 'persist':
         requestPersist().then(() => fillStorage(document.getElementById('storage-box')));

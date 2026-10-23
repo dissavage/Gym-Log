@@ -463,6 +463,7 @@ abbr[title] { text-decoration: none; cursor: help; }
 .mini-table th:first-child { text-align: left; font-weight: 600; }
 .mini-table thead th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .about { text-align: center; margin-top: 18px; }
+.steps { padding-left: 22px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 
 /* ════════════════════════════════════
    SETTINGS

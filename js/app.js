@@ -6,7 +6,7 @@
 
   // A script that failed to download (e.g. a CDN 503 mid-deploy) would otherwise leave
   // buttons that silently do nothing — stop and offer a reload instead.
-  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'backup', 'data', 'views'];
+  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'backup', 'data', 'legacy', 'legacyImport', 'views'];
   const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
   const missing = REQUIRED.filter(k => !HL[k]).concat(VIEWS.filter(v => !HL.views?.[v]));
   if (missing.length) {

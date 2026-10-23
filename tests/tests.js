@@ -510,6 +510,103 @@
   });
 
   /* ════════════════════════════════════
+     OLD GYM TRACKER IMPORT
+     ════════════════════════════════════ */
+  suite('Old Gym Tracker mapper', () => {
+    const { legacy, backup } = HL;
+    const sess = (date, dayType, exercises) => ({ date, dayType, exercises });
+    const ex = (name, type, sets) => ({ name, type, sets: sets.map(([weight, reps, isDropSet = false]) => ({ weight, reps, isDropSet })) });
+    const keys = {
+      gym_sessions: JSON.stringify([
+        sess('2026-09-22T06:16:34.778Z', 'Upper A', [ex('Skull Crushers', 'accessory', [[60, 10], [60, 9], [40, 12, true]]), ex('Dips (chest lean)', 'compound', [[0, 12], [0, 10]])]),
+        sess('2026-10-20T01:30:00.000Z', 'Upper A', [ex('Deadlift', 'compound', [[225, 5]]), ex('Pec Deck (Decline)', 'accessory', [[70, 10]])]),
+        sess('2026-10-21T01:30:00.000Z', 'Lower A', [ex('Conventional Deadlift', 'compound', [[235, 5]]), ex('Pull-ups', 'compound', [[0, 8]]), ex('Empty', 'accessory', [['', '']])]),
+      ]),
+      gym_weights: JSON.stringify([{ date: '2026-10-21T14:00:00.000Z', weight: 204.6 }, { date: 'bad', weight: 1 }]),
+      gym_custom_ex: JSON.stringify([{ name: 'Pec Deck (Decline)', type: 'accessory', muscleGroup: 'Chest', custom: true }, { name: 'Unused Thing', type: 'compound', muscleGroup: 'Back', custom: true }]),
+      gym_macro_log: JSON.stringify([{ id: Date.parse('2026-10-20T03:30:00Z') + 0.42, date: '2026-10-20', foodName: 'Chicken', cal: 400, pro: 50, carb: 0, fat: 9 }]),
+      gym_macro_goals: JSON.stringify({ cal: 2200, pro: 180, carb: 220, fat: 70 }),
+      gym_app_settings: JSON.stringify({ hiddenTabs: ['diet'] }),
+      gym_ex_overrides: JSON.stringify({ 'skull crushers': { repRange: '8-12' } }),
+    };
+    const lib = schema.BUILTIN_EXERCISES;
+    const out = legacy.mapLegacy(keys, { exercises: lib, now: new Date('2026-10-23T07:00:00Z') });
+    const workouts = out.entries.filter(e => e.type === 'workout');
+    const exOf = (w, i) => w.values.exercises[i];
+
+    test('every session with logged sets becomes a workout; empty exercises are dropped', () => {
+      assert.eq(out.report.workouts, 3);
+      assert.eq(workouts[2].values.exercises.length, 2);
+    });
+    test('pounds convert exactly to kg', () => assert.near(exOf(workouts[0], 0).sets[0].weightKg, 27.2155422));
+    test('drop sets keep their type; everything else is a working set', () =>
+      assert.eq(exOf(workouts[0], 0).sets.map(s => s.setType), ['working', 'working', 'drop']));
+    test('0 lb means bodyweight', () => {
+      assert.eq(exOf(workouts[0], 1).sets[0].weightKg, null);
+      assert.eq(out.report.bodyweightSets, 3);
+    });
+    test('UTC start time lands on the local calendar day', () => {
+      const d = new Date('2026-09-22T06:16:34.778Z');
+      assert.eq(workouts[0].dayKey, util.dayKey(d));
+      assert.eq(new Date(workouts[0].timestamp).getTime(), d.getTime());
+    });
+    test('confirmed aliases link to the library (Skull Crushers, Conventional Deadlift → Deadlift)', () => {
+      assert.eq(exOf(workouts[0], 0).exerciseId, 'ex-skull-crusher');
+      assert.eq(exOf(workouts[2], 0).exerciseId, 'ex-deadlift');
+      assert.eq(exOf(workouts[1], 0).exerciseId, 'ex-deadlift');
+    });
+    test('near-exact names match (Pull-ups → Pull-up)', () => assert.eq(exOf(workouts[2], 1).exerciseId, 'ex-pull-up'));
+    test('variants stay separate as new exercises with inferred muscles', () => {
+      const dips = out.exercises.find(e => e.name === 'Dips (chest lean)');
+      assert.eq([dips.primary, dips.equipment, dips.category], [['chest'], 'bodyweight', 'compound']);
+      const decline = out.exercises.find(e => e.name === 'Pec Deck (Decline)');
+      assert.eq([decline.primary, decline.equipment, decline.category], [['chest'], 'machine', 'isolation']);
+    });
+    test('unused custom exercises still come over', () => {
+      const u = out.exercises.find(e => e.name === 'Unused Thing');
+      assert.eq(u.primary, ['lats']);
+    });
+    test('one template per split day from its latest session, linked to its workouts', () => {
+      assert.eq(out.templates.map(t => [t.name, t.color]), [['Upper A', 'orange'], ['Lower A', 'green']]);
+      assert.eq(out.templates[0].exercises.map(s => s.exerciseId), ['ex-deadlift', exOf(workouts[1], 1).exerciseId]);
+      assert.eq(workouts[1].values.templateId, out.templates[0].id);
+    });
+    test('weigh-ins convert; invalid rows are skipped', () => {
+      const w = out.entries.filter(e => e.type === 'body');
+      assert.eq(w.length, 1);
+      assert.eq(units.display('mass', w[0].values.weight, imperial), 204.6);
+    });
+    test('meals take their time from the epoch id, not the UTC date string', () => {
+      const m = out.entries.find(e => e.type === 'nutrition');
+      assert.eq(m.values, { food: 'Chicken', calories: 400, protein: 50, carbs: 0, fat: 9 });
+      assert.eq(m.dayKey, util.dayKey(new Date('2026-10-20T03:30:00Z')));
+    });
+    test('macro goals map to Food goals', () => assert.eq(out.macroGoals, { calories: 2200, protein: 180, carbs: 220, fat: 70 }));
+    test('settings and overrides are reported as skipped', () =>
+      assert.eq(out.report.skipped.map(s => s.key), ['gym_app_settings', 'gym_ex_overrides']));
+    test('every record is tagged with its source for dedupe', () =>
+      assert.ok([...out.entries, ...out.exercises, ...out.templates].every(r => r.source?.app === 'gym-tracker' && r.source.key)));
+    test('importing twice adds nothing the second time, even after renaming an imported exercise', () => {
+      const first = backup.diffImport({}, { exercises: out.exercises, entries: out.entries, templates: out.templates });
+      const existing = { exercises: [...lib, ...first.add.filter(x => x.store === 'exercises').map(x => ({ ...x.record, name: x.record.name === 'Pec Deck (Decline)' ? 'Decline Pec Deck' : x.record.name }))],
+        entries: first.add.filter(x => x.store === 'entries').map(x => x.record), templates: first.add.filter(x => x.store === 'templates').map(x => x.record) };
+      const again = legacy.mapLegacy(keys, { exercises: existing.exercises, now: new Date('2026-10-23T07:00:00Z') });
+      const second = backup.diffImport(existing, { exercises: again.exercises, entries: again.entries, templates: again.templates });
+      assert.eq(second.add.length, 0);
+      const renamed = existing.exercises.find(e => e.name === 'Decline Pec Deck');
+      assert.eq(again.entries.find(e => e.type === 'workout' && e.values.exercises.some(x => x.exerciseId === renamed.id)) != null, true);
+    });
+    test('damaged keys are reported, not fatal', () => {
+      const bad = legacy.mapLegacy({ gym_sessions: '{nope', gym_weights: '[]' }, { exercises: lib });
+      assert.eq([bad.report.workouts, bad.report.skipped[0].key], [0, 'gym_sessions']);
+    });
+    test('an in-progress workout becomes a draft with filled sets ticked', () => {
+      const d = legacy.mapLegacy({ gym_draft: JSON.stringify({ dayType: 'Arm Day', date: '2026-10-22T20:00:00Z', exercises: [ex('Hammer Curl', 'accessory', [[35, 10], ['', '']])] }) }, { exercises: lib }).draft;
+      assert.eq([d.id, d.name, d.exercises[0].exerciseId, d.exercises[0].sets.map(s => s.done)], ['workout', 'Arm Day', 'ex-hammer-curl', [true, false]]);
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');
