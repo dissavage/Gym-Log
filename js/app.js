@@ -111,7 +111,7 @@
     const pref = repo.getSettings().theme;
     const theme = pref === 'auto' ? (lightQuery.matches ? 'light' : 'dark') : pref;
     document.documentElement.dataset.theme = theme;
-    document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f5f4f1' : '#0f0f0f';
+    document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f5f4f1' : '#0B0C0E';
   }
 
   /* ════════════════════════════════════

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f0f0f">
+  <meta name="theme-color" content="#0B0C0E">
   <meta name="color-scheme" content="dark light">
   <script>
     // Apply the saved theme before first paint (dark unless the person chose otherwise)
@@ -21,8 +21,11 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Health Log">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap">
   <!-- Bump ?v= (and VERSION in sw.js) on every release so phones never mix cached old and new files -->
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 
@@ -39,38 +42,43 @@
 <div id="rest-pill" class="rest-pill" hidden></div>
 
 <nav class="tabbar" aria-label="Main">
-  <button type="button" class="tab-btn" data-view="today" aria-current="page"><span class="tab-icon" aria-hidden="true">🏠</span><span>Today</span></button>
-  <button type="button" class="tab-btn" data-view="workout"><span class="tab-icon" aria-hidden="true">🏋️</span><span>Workout</span></button>
-  <button type="button" class="tab-btn" data-view="history"><span class="tab-icon" aria-hidden="true">📋</span><span>History</span></button>
-  <button type="button" class="tab-btn" data-view="insights"><span class="tab-icon" aria-hidden="true">📈</span><span>Insights</span></button>
-  <button type="button" class="tab-btn" data-view="more"><span class="tab-icon" aria-hidden="true">⚙️</span><span>More</span></button>
+  <button type="button" class="tab-btn" data-view="today" aria-current="page">
+    <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span>Today</span></button>
+  <button type="button" class="tab-btn" data-view="workout">
+    <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg><span>Workout</span></button>
+  <button type="button" class="tab-btn" data-view="history">
+    <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg><span>History</span></button>
+  <button type="button" class="tab-btn" data-view="insights">
+    <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4v16h16"/><path d="M7.5 14.5l4-4 3 3 5-6"/></svg><span>Insights</span></button>
+  <button type="button" class="tab-btn" data-view="more">
+    <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg><span>More</span></button>
 </nav>
 
 <div id="toast-root" aria-live="polite"></div>
 
-<script src="js/util.js?v=9"></script>
-<script src="js/units.js?v=9"></script>
-<script src="js/schema.js?v=9"></script>
-<script src="js/domain.js?v=9"></script>
-<script src="js/backup.js?v=9"></script>
-<script src="js/legacy.js?v=9"></script>
-<script src="js/demo.js?v=9"></script>
-<script src="js/db.js?v=9"></script>
-<script src="js/repo.js?v=9"></script>
-<script src="js/ui/toast.js?v=9"></script>
-<script src="js/ui/sheet.js?v=9"></script>
-<script src="js/ui/entry.js?v=9"></script>
-<script src="js/ui/rest.js?v=9"></script>
-<script src="js/ui/exercises.js?v=9"></script>
-<script src="js/ui/workout.js?v=9"></script>
-<script src="js/ui/charts.js?v=9"></script>
-<script src="js/ui/history.js?v=9"></script>
-<script src="js/ui/insights.js?v=9"></script>
-<script src="js/ui/trackers.js?v=9"></script>
-<script src="js/ui/data.js?v=9"></script>
-<script src="js/ui/legacy-import.js?v=9"></script>
-<script src="js/ui/today.js?v=9"></script>
-<script src="js/ui/settings.js?v=9"></script>
-<script src="js/app.js?v=9"></script>
+<script src="js/util.js?v=10"></script>
+<script src="js/units.js?v=10"></script>
+<script src="js/schema.js?v=10"></script>
+<script src="js/domain.js?v=10"></script>
+<script src="js/backup.js?v=10"></script>
+<script src="js/legacy.js?v=10"></script>
+<script src="js/demo.js?v=10"></script>
+<script src="js/db.js?v=10"></script>
+<script src="js/repo.js?v=10"></script>
+<script src="js/ui/toast.js?v=10"></script>
+<script src="js/ui/sheet.js?v=10"></script>
+<script src="js/ui/entry.js?v=10"></script>
+<script src="js/ui/rest.js?v=10"></script>
+<script src="js/ui/exercises.js?v=10"></script>
+<script src="js/ui/workout.js?v=10"></script>
+<script src="js/ui/charts.js?v=10"></script>
+<script src="js/ui/history.js?v=10"></script>
+<script src="js/ui/insights.js?v=10"></script>
+<script src="js/ui/trackers.js?v=10"></script>
+<script src="js/ui/data.js?v=10"></script>
+<script src="js/ui/legacy-import.js?v=10"></script>
+<script src="js/ui/today.js?v=10"></script>
+<script src="js/ui/settings.js?v=10"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>
