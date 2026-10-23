@@ -16,20 +16,8 @@
       if (!v.bedTime || !v.wakeTime) return null;
       return (clockMin(v.wakeTime) - clockMin(v.bedTime) + 1440) % 1440;
     },
-    workoutVolume: v => {
-      let total = 0;
-      for (const ex of v.exercises || []) for (const s of ex.sets || []) {
-        if (s.done && s.setType !== 'warmup' && s.weightKg != null && s.reps != null) total += s.weightKg * s.reps;
-      }
-      return total;
-    },
-    workoutSets: v => {
-      let n = 0;
-      for (const ex of v.exercises || []) for (const s of ex.sets || []) {
-        if (s.done && (s.setType === 'working' || s.setType === 'failure')) n++;
-      }
-      return n;
-    },
+    workoutVolume: v => sessionVolume((v.exercises || []).flatMap(ex => ex.sets || [])),
+    workoutSets: v => (v.exercises || []).flatMap(ex => ex.sets || []).filter(isWorkingSet).length,
   };
 
   // Inputs that a computed field already summarizes, so lists don't repeat them
@@ -136,8 +124,115 @@
     return parts.join(' · ');
   }
 
+  /* ════════════════════════════════════
+     STRENGTH — e1RM, history, PRs
+     ════════════════════════════════════ */
+  const E1RM_MAX_REPS = 12;
+  const EPS = 0.01;
+
+  // Epley. Only an estimate, and unreliable past ~12 reps, so those return null.
+  function e1rm(weight, reps) {
+    if (!(weight > 0) || !(reps >= 1) || reps > E1RM_MAX_REPS) return null;
+    return reps === 1 ? weight : weight * (1 + reps / 30);
+  }
+
+  const countsForPR = s => !!s.done && s.setType !== 'warmup' && s.reps > 0;
+  const isWorkingSet = s => !!s.done && (s.setType === 'working' || s.setType === 'failure');
+  const sessionVolume = sets => sets.filter(countsForPR).reduce((a, s) => a + (s.weightKg || 0) * s.reps, 0);
+
+  // exerciseId → [{ entryId, timestamp, dayKey, sets }] oldest first (done sets only)
+  function exerciseIndex(workoutEntries) {
+    const idx = new Map();
+    const sorted = [...workoutEntries].sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+    for (const e of sorted) for (const ex of e.values?.exercises || []) {
+      const sets = (ex.sets || []).filter(s => s.done);
+      if (!sets.length) continue;
+      if (!idx.has(ex.exerciseId)) idx.set(ex.exerciseId, []);
+      const list = idx.get(ex.exerciseId);
+      const prev = list[list.length - 1];
+      if (prev && prev.entryId === e.id) prev.sets = prev.sets.concat(sets);
+      else list.push({ entryId: e.id, timestamp: e.timestamp, dayKey: e.dayKey, sets });
+    }
+    return idx;
+  }
+
+  function personalBests(sessions) {
+    let b = { weight: 0, e1rm: 0, volume: 0, pairs: [] };
+    for (const s of sessions) {
+      for (const set of s.sets) if (countsForPR(set)) b = addToBests(b, set);
+      b.volume = Math.max(b.volume, sessionVolume(s.sets));
+    }
+    return b;
+  }
+
+  function addToBests(b, set) {
+    if (!countsForPR(set)) return b;
+    const w = set.weightKg || 0;
+    return {
+      ...b,
+      weight: Math.max(b.weight, w),
+      e1rm: Math.max(b.e1rm, e1rm(w, set.reps) || 0),
+      pairs: b.pairs.concat([[w, set.reps]]),
+    };
+  }
+
+  // PR types this set beats: 'weight' | 'e1rm' | 'reps' (most reps at this weight or heavier).
+  // A first-ever session sets a baseline rather than PRs.
+  function setPRs(bests, set) {
+    if (!countsForPR(set) || !bests.pairs.length) return [];
+    const w = set.weightKg || 0;
+    const prs = [];
+    if (w > bests.weight + EPS) prs.push('weight');
+    const est = e1rm(w, set.reps);
+    if (est && est > bests.e1rm + EPS) prs.push('e1rm');
+    if (!prs.includes('weight')) {
+      const heavier = bests.pairs.filter(([pw]) => pw >= w - EPS);
+      if (heavier.length && set.reps > Math.max(...heavier.map(p => p[1]))) prs.push('reps');
+    }
+    return prs;
+  }
+
+  // All PRs in one session of an exercise; later sets are compared against earlier ones too,
+  // so only the best of each type is reported.
+  function sessionPRs(history, sets) {
+    const base = personalBests(history);
+    if (!base.pairs.length) return [];
+    const found = new Map();
+    let running = base;
+    for (const s of sets) {
+      for (const type of setPRs(running, s)) found.set(type, { type, set: s });
+      running = addToBests(running, s);
+    }
+    const vol = sessionVolume(sets);
+    if (vol > base.volume + EPS) found.set('volume', { type: 'volume', value: vol });
+    return [...found.values()];
+  }
+
+  // The set at the same position among sets of the same type last time ("last time: 185×8")
+  function matchingSet(lastSets, setType, ordinal) {
+    return (lastSets || []).filter(s => s.setType === setType)[ordinal] || null;
+  }
+
+  function formatSet(set, prefs) {
+    if (!set) return '';
+    const w = set.weightKg ? units.display('mass', set.weightKg, prefs) : 'BW';
+    return `${typeof w === 'number' ? w.toLocaleString(undefined, { maximumFractionDigits: 2 }) : w}×${set.reps ?? '—'}`;
+  }
+
+  function workoutSummary(values) {
+    const all = (values.exercises || []).flatMap(ex => ex.sets || []);
+    return {
+      exercises: (values.exercises || []).filter(ex => (ex.sets || []).some(s => s.done)).length,
+      workingSets: all.filter(isWorkingSet).length,
+      doneSets: all.filter(s => s.done).length,
+      volume: sessionVolume(all),
+    };
+  }
+
   HL.domain = {
     COMPUTED, withComputed, isNumericField, fieldNumber, aggregate, goalProgress,
     formatField, summarizeEntry,
+    E1RM_MAX_REPS, e1rm, countsForPR, isWorkingSet, sessionVolume, exerciseIndex,
+    personalBests, addToBests, setPRs, sessionPRs, matchingSet, formatSet, workoutSummary,
   };
 })(globalThis.HL = globalThis.HL || {});

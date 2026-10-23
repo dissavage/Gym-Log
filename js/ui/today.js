@@ -24,6 +24,7 @@
           <p class="page-sub">${esc(util.fmtDay(today))}</p>
         </div>
       </header>
+      ${resumeHtml()}
       <section aria-labelledby="qa-h">
         <h2 id="qa-h" class="section-label section-gap">Quick log</h2>
         <div class="qa-grid">${trackers.map(t => tileHtml(t, byType(t.key), prefs)).join('')}</div>
@@ -33,10 +34,30 @@
       ${logCardHtml(todays, prefs)}`;
   }
 
+  function draftProgress(d) {
+    const sets = d.exercises.flatMap(e => e.sets);
+    return `${sets.filter(s => s.done).length}/${sets.length} sets`;
+  }
+
+  function resumeHtml() {
+    const d = HL.workout.current();
+    if (!d) return '';
+    return `
+      <button type="button" class="resume-card" data-act="resume">
+        <span class="resume-icon" aria-hidden="true">🏋️</span>
+        <span class="grow"><span class="resume-title">${d.editingId ? 'Editing' : 'Workout in progress'}: ${esc(d.name)}</span>
+          <span class="resume-sub">${esc(draftProgress(d))} · tap to resume</span></span>
+        <span aria-hidden="true">›</span>
+      </button>`;
+  }
+
   function tileHtml(t, entries, prefs) {
     let val = 'Tap to log';
     let done = false;
-    if (t.kind === 'checklist') {
+    const d = t.kind === 'workout' && HL.workout.current();
+    if (d) {
+      val = `In progress · ${draftProgress(d)}`;
+    } else if (t.kind === 'checklist') {
       const items = activeItems(t.key);
       const taken = takenMap(entries);
       if (items.length) { val = `${items.filter(i => taken.has(i.id)).length}/${items.length} taken`; done = taken.size >= items.length; }
@@ -192,6 +213,7 @@
       return;
     }
     const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'resume') HL.app.show('workout');
     if (act === 'edit-goals') openGoalsSheet();
     if (act === 'manage-items') openItemsSheet();
   }
@@ -322,5 +344,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.today = { title: 'Today', stores: ['entries', 'trackers', 'checklistItems', 'presets'], render, onClick };
+  HL.views.today = { title: 'Today', stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

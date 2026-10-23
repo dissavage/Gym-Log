@@ -75,7 +75,7 @@
     let startY = null;
     handle.addEventListener('pointerdown', e => {
       startY = e.clientY;
-      handle.setPointerCapture(e.pointerId);
+      try { handle.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
       sheet.style.transition = 'none';
     });
     handle.addEventListener('pointermove', e => {

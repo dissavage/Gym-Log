@@ -7,7 +7,6 @@
   const { util, repo } = HL;
   const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
   const PLACEHOLDERS = {
-    workout:  ['🏋️', 'Workout mode', 'Templates, set logging and the rest timer arrive in Phase 2.'],
     history:  ['📋', 'History', 'A searchable feed of everything you log arrives in Phase 3.'],
     insights: ['📈', 'Insights', 'PRs, weekly volume and trend charts arrive in Phase 3.'],
   };
@@ -25,8 +24,9 @@
   function focusKey(el) {
     const a = document.activeElement;
     if (!a || !el.contains(a)) return null;
-    for (const attr of a.getAttributeNames()) if (attr.startsWith('data-')) return `[${attr}="${CSS.escape(a.getAttribute(attr))}"]`;
-    return a.id ? `#${CSS.escape(a.id)}` : null;
+    if (a.id) return `#${CSS.escape(a.id)}`;
+    const sel = a.getAttributeNames().filter(n => n.startsWith('data-')).map(n => `[${n}="${CSS.escape(a.getAttribute(n))}"]`).join('');
+    return sel || null;
   }
 
   function renderView(name) {
@@ -143,6 +143,7 @@
       return;
     }
     wire();
+    for (const name of VIEWS) HL.views[name]?.init?.();
     show('today');
   }
 

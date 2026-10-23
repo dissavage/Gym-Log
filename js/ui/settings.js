@@ -32,13 +32,32 @@
         <div class="settings-card">
           ${segRow('system', 'Measurement system', 'Data is stored in metric; this only changes display', systemOf(s.units), [['imperial', 'lb · oz'], ['metric', 'kg · ml']])}
         </div>
+      </section>
+      <section class="settings-section" aria-labelledby="wo-h">
+        <h2 class="section-label" id="wo-h">Workout</h2>
+        <div class="settings-card">
+          ${segRow('effort', 'Effort rating', 'Shown on each set', s.effort, [['rpe', 'RPE'], ['rir', 'RIR'], ['off', 'Off']])}
+          ${segRow('restSec', 'Default rest', 'Per-exercise rest overrides this', String(s.restSec), [['60', '1:00'], ['90', '1:30'], ['120', '2:00'], ['180', '3:00']])}
+          ${segRow('plateStep', 'Weight +/− step', s.units.mass === 'lb' ? '5 lb or 2.5 lb' : '2.5 kg or 1.25 kg', s.plateStep, [['standard', 'Standard'], ['fine', 'Fine']])}
+          <button type="button" class="settings-row settings-link" data-act="exercises">
+            <span><span class="settings-lbl">Exercise library</span><span class="settings-sub">Add, edit or hide exercises</span></span>
+            <span aria-hidden="true" class="muted">›</span>
+          </button>
+        </div>
       </section>`;
   }
 
   function onChange(e) {
-    if (e.target.name === 'system') repo.setSettings({ units: { ...units.SYSTEMS[e.target.value] } });
+    const { name, value } = e.target;
+    if (name === 'system') repo.setSettings({ units: { ...units.SYSTEMS[value] } });
+    if (name === 'effort' || name === 'plateStep') repo.setSettings({ [name]: value });
+    if (name === 'restSec') repo.setSettings({ restSec: Number(value) });
+  }
+
+  function onClick(e) {
+    if (e.target.closest('[data-act="exercises"]')) HL.exercises.pick({ manage: true });
   }
 
   HL.views = HL.views || {};
-  HL.views.more = { title: 'More', stores: [], render, onChange };
+  HL.views.more = { title: 'More', stores: [], render, onChange, onClick };
 })(globalThis.HL = globalThis.HL || {});

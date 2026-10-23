@@ -208,6 +208,91 @@
   });
 
   /* ════════════════════════════════════
+     STRENGTH
+     ════════════════════════════════════ */
+  const S = (weightKg, reps, setType = 'working', done = true) => ({ weightKg, reps, setType, done });
+  const session = (sets, timestamp = '2026-10-01T10:00:00.000-07:00') => ({ entryId: timestamp, timestamp, sets });
+
+  suite('Estimated 1RM (Epley)', () => {
+    test('1 rep is the weight itself', () => assert.eq(domain.e1rm(100, 1), 100));
+    test('100 kg × 10 ≈ 133.3', () => assert.near(domain.e1rm(100, 10), 133.3333, 1e-3));
+    test('100 × 5 = 116.67', () => assert.near(domain.e1rm(100, 5), 116.6667, 1e-3));
+    test('more than 12 reps is too unreliable → null', () => assert.eq(domain.e1rm(60, 13), null));
+    test('zero weight or reps → null', () => {
+      assert.eq(domain.e1rm(0, 5), null);
+      assert.eq(domain.e1rm(100, 0), null);
+      assert.eq(domain.e1rm(null, 5), null);
+    });
+  });
+
+  suite('PR detection', () => {
+    const hist = [session([S(100, 5), S(100, 5), S(90, 8)])];
+    const bests = domain.personalBests(hist);
+    test('personal bests from history', () => {
+      assert.eq(bests.weight, 100);
+      assert.near(bests.e1rm, 116.6667, 1e-3);
+      assert.eq(bests.volume, 1720);
+    });
+    test('heavier weight → weight PR (+ e1RM PR)', () => assert.eq(domain.setPRs(bests, S(102.5, 5)), ['weight', 'e1rm']));
+    test('same weight, more reps → rep PR + e1RM PR', () => assert.eq(domain.setPRs(bests, S(100, 6)), ['e1rm', 'reps']));
+    test('lighter weight, more reps than ever at ≥ that weight → rep PR', () => assert.eq(domain.setPRs(bests, S(85, 9)), ['reps']));
+    test('lighter weight, reps already beaten at a heavier weight → no PR', () => assert.eq(domain.setPRs(bests, S(80, 5)), []));
+    test('equal performance is not a PR', () => assert.eq(domain.setPRs(bests, S(100, 5)), []));
+    test('warm-ups never count', () => assert.eq(domain.setPRs(bests, S(150, 5, 'warmup')), []));
+    test('unticked sets never count', () => assert.eq(domain.setPRs(bests, S(150, 5, 'working', false)), []));
+    test('first-ever session sets a baseline, not PRs', () => {
+      assert.eq(domain.setPRs(domain.personalBests([]), S(100, 5)), []);
+      assert.eq(domain.sessionPRs([], [S(100, 5)]), []);
+    });
+    test('bodyweight exercise: more reps → rep PR', () => {
+      const b = domain.personalBests([session([S(null, 10), S(null, 8)])]);
+      assert.eq(domain.setPRs(b, S(null, 12)), ['reps']);
+    });
+    test('session PRs keep only the best of each type, plus volume', () => {
+      const prs = domain.sessionPRs(hist, [S(102.5, 3), S(105, 3), S(100, 5), S(100, 5), S(90, 8)]);
+      const types = prs.map(p => p.type).sort();
+      assert.eq(types, ['volume', 'weight']);
+      assert.eq(prs.find(p => p.type === 'weight').set.weightKg, 105);
+    });
+    test('volume ignores warm-ups and unticked sets', () =>
+      assert.eq(domain.sessionVolume([S(100, 5), S(60, 10, 'warmup'), S(100, 5, 'working', false)]), 500));
+  });
+
+  suite('Exercise history', () => {
+    const wo = (id, timestamp, exercises) => ({ id, timestamp, dayKey: timestamp.slice(0, 10), values: { exercises } });
+    const entries = [
+      wo('b', '2026-10-05T10:00:00.000-07:00', [{ exerciseId: 'bench', sets: [S(100, 5)] }]),
+      wo('a', '2026-10-01T10:00:00.000-07:00', [{ exerciseId: 'bench', sets: [S(95, 5), S(95, 5, 'working', false)] }, { exerciseId: 'row', sets: [S(80, 8)] }]),
+      wo('c', '2026-10-08T10:00:00.000-07:00', [{ exerciseId: 'bench', sets: [S(60, 5, 'warmup')] }, { exerciseId: 'bench', sets: [S(102.5, 5)] }]),
+    ];
+    const idx = domain.exerciseIndex(entries);
+    test('sessions are oldest first', () => assert.eq(idx.get('bench').map(s => s.entryId), ['a', 'b', 'c']));
+    test('only ticked sets are kept', () => assert.eq(idx.get('bench')[0].sets.length, 1));
+    test('same exercise twice in one workout merges into one session', () => assert.eq(idx.get('bench')[2].sets.length, 2));
+    test('matchingSet pairs by type and position', () => {
+      const last = [S(60, 10, 'warmup'), S(100, 8), S(100, 7), S(80, 10, 'drop')];
+      assert.eq(domain.matchingSet(last, 'working', 1).reps, 7);
+      assert.eq(domain.matchingSet(last, 'drop', 0).weightKg, 80);
+      assert.eq(domain.matchingSet(last, 'working', 5), null);
+    });
+    test('formatSet uses display units', () => {
+      assert.eq(domain.formatSet(S(units.toCanonical('mass', 185, 'lb'), 8), imperial), '185×8');
+      assert.eq(domain.formatSet(S(null, 12), imperial), 'BW×12');
+    });
+    test('workout summary counts working + failure sets only', () => {
+      const sum = domain.workoutSummary({ exercises: [{ sets: [S(60, 10, 'warmup'), S(100, 5), S(100, 4, 'failure'), S(80, 8, 'drop')] }, { sets: [S(50, 10, 'working', false)] }] });
+      assert.eq(sum, { exercises: 1, workingSets: 2, doneSets: 4, volume: 1540 });
+    });
+    test('seeded exercise library has ~80 unique ids with known muscles', () => {
+      const ids = schema.BUILTIN_EXERCISES.map(e => e.id);
+      const muscles = new Set(schema.MUSCLES.map(m => m.id));
+      assert.ok(ids.length >= 80, `only ${ids.length}`);
+      assert.eq(new Set(ids).size, ids.length);
+      assert.ok(schema.BUILTIN_EXERCISES.every(e => e.primary.length && [...e.primary, ...e.secondary].every(m => muscles.has(m))));
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');

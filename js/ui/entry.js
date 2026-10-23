@@ -166,7 +166,10 @@
   function open(trackerKey, { entry = null, values: given = null } = {}) {
     const tracker = repo.tracker(trackerKey);
     if (!tracker) return;
-    if (tracker.kind === 'workout' && !entry) { HL.app.show('workout'); return; }
+    if (tracker.kind === 'workout') {
+      if (entry) HL.workout.editEntry(entry); else HL.app.show('workout');
+      return;
+    }
     const prefs = repo.getSettings().units;
     const last = repo.lastEntry(trackerKey);
     const original = entry ? entry.values : {};

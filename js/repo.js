@@ -184,10 +184,13 @@
     await db.write(ops);
   }
 
-  // Adds built-ins that don't exist yet; never overwrites user edits (goals, order, archive)
+  // Adds built-ins that don't exist yet; never overwrites user edits (goals, order, archive, renames)
   function seedBuiltins() {
     for (const def of schema.BUILTIN_TRACKERS) {
       if (!cache.trackers.has(def.id)) put('trackers', make('tracker', def));
+    }
+    for (const def of schema.BUILTIN_EXERCISES) {
+      if (!cache.exercises.has(def.id)) put('exercises', make('exercise', def));
     }
   }
 
@@ -204,7 +207,7 @@
      SETTINGS — small, synchronous, so localStorage (namespaced away from the old app)
      ════════════════════════════════════ */
   const SETTINGS_KEY = 'healthlog.settings';
-  const DEFAULTS = { units: { ...units.SYSTEMS.imperial }, effort: 'rpe', weekStart: 1, restSec: 90 };
+  const DEFAULTS = { units: { ...units.SYSTEMS.imperial }, effort: 'rpe', weekStart: 1, restSec: 90, plateStep: 'standard' };
   let settings = loadSettings();
 
   function loadSettings() {
