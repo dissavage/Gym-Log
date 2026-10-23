@@ -464,6 +464,31 @@ abbr[title] { text-decoration: none; cursor: help; }
 .settings-row .seg { min-width: 140px; flex-shrink: 0; }
 .settings-row .seg label { min-width: 46px; }
 .settings-link { width: 100%; text-align: left; }
+.tracker-row { gap: 6px; padding: 6px 8px 6px 12px; }
+.tracker-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; min-height: var(--tap); }
+.tracker-main .settings-lbl, .tracker-main .settings-sub { display: block; }
+.tracker-icon { font-size: 22px; width: 28px; text-align: center; flex-shrink: 0; }
+.tracker-row.is-archived .tracker-main { opacity: .55; }
+
+/* TRACKER BUILDER */
+.icon-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
+.icon-grid label { position: relative; }
+.icon-grid input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.icon-grid span { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; min-height: var(--tap); font-size: 22px; border-radius: 10px; background: var(--surf2); border: 1.5px solid var(--border); }
+.icon-grid input:checked + span { border-color: var(--accent); background: var(--accent-d); }
+.icon-grid input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.icon-input { width: 96px; font-size: 20px; text-align: center; margin-top: 6px; }
+.icon-grid + .field-hint { display: block; }
+.input:disabled { opacity: .55; }
+.bf-list { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.bf { background: var(--surf); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.bf .field { margin-bottom: 10px; }
+.bf-top { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }
+.bf-top .input { flex: 1; min-width: 0; font-weight: 700; }
+.bf.is-hidden { opacity: .6; }
+.plain-list { list-style: none; font-size: 14px; margin-bottom: 10px; }
+.plain-list li { padding: 6px 0; border-top: 1px solid var(--border); }
+.plain-list li:first-child { border-top: none; }
 .settings-link .settings-lbl, .settings-link .settings-sub { display: block; }
 .settings-row .seg span { min-height: 38px; font-size: 13px; }
 

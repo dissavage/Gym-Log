@@ -218,7 +218,7 @@
   function trendOptions() {
     const opts = [];
     for (const t of repo.trackers()) {
-      for (const f of t.fields) if (domain.isNumericField(f) || f.computed) opts.push({ key: `${t.key}.${f.key}`, t, f });
+      for (const f of t.fields) if (!f.hidden && (domain.isNumericField(f) || f.computed)) opts.push({ key: `${t.key}.${f.key}`, t, f });
     }
     return opts;
   }

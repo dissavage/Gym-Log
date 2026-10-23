@@ -386,6 +386,60 @@
   });
 
   /* ════════════════════════════════════
+     CUSTOM TRACKERS
+     ════════════════════════════════════ */
+  suite('Custom tracker builder', () => {
+    const f = (label, kind = 'number', extra = {}) => ({ key: null, label, ...domain.fieldDefaults(kind), ...extra });
+    test('valid definition passes', () => assert.eq(domain.validateTracker({ name: 'Steps', fields: [f('Steps')] }), []));
+    test('needs a name and a visible field', () => {
+      assert.eq(domain.validateTracker({ name: ' ', fields: [] }), ['Give the tracker a name.', 'Add at least one field.']);
+      assert.eq(domain.validateTracker({ name: 'X', fields: [f('A', 'number', { hidden: true })] }), ['Add at least one field.']);
+    });
+    test('rejects duplicate field labels (case-insensitive) and blank labels', () => {
+      assert.eq(domain.validateTracker({ name: 'BP', fields: [f('Sys'), f('sys')] }), ['Two fields are called “sys”.']);
+      assert.eq(domain.validateTracker({ name: 'BP', fields: [f('')] }), ['Every field needs a label.']);
+    });
+    test('rejects a tracker name that already exists', () =>
+      assert.eq(domain.validateTracker({ name: 'water', fields: [f('A')] }, [{ id: 'x', name: 'Water' }]), ['You already have a tracker called “water”.']));
+    test('renaming a tracker to its own name is fine', () =>
+      assert.eq(domain.validateTracker({ id: 'x', name: 'Water', fields: [f('A')] }, [{ id: 'x', name: 'Water' }]), []));
+    test('goals must be positive', () =>
+      assert.eq(domain.validateTracker({ name: 'X', fields: [f('A', 'number', { goal: { target: 0, dir: 'atLeast' } })] }), ['The goal for “A” must be above 0.']));
+    test('field keys are slugged, unique, and stable', () => {
+      const taken = new Set(['steps']);
+      assert.eq(domain.uniqueKey('Steps', taken), 'steps_2');
+      assert.eq(domain.uniqueKey('Blood Pressure (sys)', new Set()), 'blood_pressure_sys');
+      assert.eq(domain.uniqueKey('Meditation', new Set(), 'c_'), 'c_meditation');
+      assert.eq(domain.uniqueKey('😊', new Set()), 'field');
+    });
+    test('defaults per kind combine logs sensibly', () => {
+      assert.eq(['number', 'scale', 'bool', 'duration', 'text', 'time'].map(k => domain.fieldDefaults(k).agg), ['sum', 'avg', 'max', 'sum', 'last', 'last']);
+      assert.eq(domain.fieldDefaults('scale').max, 5);
+    });
+    test('a custom tracker aggregates and summarizes like a built-in', () => {
+      const t = { fields: [f('Steps', 'number', { key: 'steps', unit: 'steps', primary: true }), f('Felt good', 'bool', { key: 'good' })] };
+      assert.eq(domain.aggregate(t, [entry({ steps: 4000 }), entry({ steps: 6500, good: true })], 'steps'), 10500);
+      assert.eq(domain.summarizeEntry(t, { values: { steps: 6500, good: true } }, imperial), '6,500 steps · Yes felt good');
+    });
+    test('hidden fields are left out of summaries', () => {
+      const t = { fields: [f('A', 'number', { key: 'a', primary: true }), f('Old', 'number', { key: 'old', hidden: true })] };
+      assert.eq(domain.summarizeEntry(t, { values: { a: 3, old: 9 } }, imperial), '3');
+    });
+    test('quick-add buttons: unit-less and per display unit', () => {
+      const steps = { fields: [{ key: 'steps', kind: 'number', primary: true, unit: 'steps' }], quick: { chips: { _: [1000, 5000] } } };
+      assert.eq(domain.quickChips(steps, imperial).values, [1000, 5000]);
+      const water = tracker('hydration');
+      assert.eq(domain.quickChips(water, imperial).values, [8, 16, 24]);
+      assert.eq(domain.quickChips(water, metric).unit, 'ml');
+      assert.eq(domain.quickChips({ fields: [], quick: {} }, imperial), null);
+    });
+    test('fieldToCanonical converts only fields with a dimension', () => {
+      assert.near(units.fieldToCanonical({ dim: 'volume' }, 16, imperial), 473.176473);
+      assert.eq(units.fieldToCanonical({ unit: 'steps' }, 1000, imperial), 1000);
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');

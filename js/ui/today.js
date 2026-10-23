@@ -62,7 +62,7 @@
       const taken = takenMap(entries);
       if (items.length) { val = `${items.filter(i => taken.has(i.id)).length}/${items.length} taken`; done = taken.size >= items.length; }
     } else if (entries.length) {
-      const f = t.fields.find(x => x.primary) || t.fields[0];
+      const f = t.fields.find(x => x.primary && !x.hidden) || t.fields.find(x => !x.hidden && domain.isNumericField(x)) || t.fields.find(x => !x.hidden);
       const v = domain.aggregate(t, entries, f.key);
       val = v != null ? domain.formatField(f, v, prefs) : `${entries.length} logged`;
       done = !!(f.goal && domain.goalProgress(v, f.goal).state === 'met');
@@ -80,7 +80,7 @@
   /* ── Goals ── */
   function goalFields(trackers) {
     const out = [];
-    for (const t of trackers) for (const f of t.fields) if (f.goal) out.push({ t, f });
+    for (const t of trackers) for (const f of t.fields) if (f.goal && !f.hidden) out.push({ t, f });
     return out;
   }
 
@@ -110,18 +110,21 @@
     const status = g.state === 'met' ? '<span class="met">✓ Goal met</span>'
       : g.state === 'over' ? `<span class="over">▲ ${esc(fmt(remain))} over</span>`
       : `<span>${esc(fmt(remain))} to go</span>`;
-    const chips = t.quick?.chips?.[units.unitFor(f.dim, prefs)];
+    const qc = domain.quickChips(t, prefs);
+    const chips = qc && qc.field.key === f.key ? qc.values : null;
+    // A one-field tracker (Water) reads better under its own name than the field's
+    const name = t.fields.filter(x => !x.hidden).length === 1 ? t.name : f.label;
     return `
       <div class="goal-row">
         <div class="goal-top">
-          <span class="goal-name">${t.icon ? `<span aria-hidden="true">${t.icon}</span> ` : ''}${esc(f.label === 'Amount' ? t.name : f.label)}</span>
+          <span class="goal-name">${t.icon ? `<span aria-hidden="true">${t.icon}</span> ` : ''}${esc(name)}</span>
           <span class="goal-nums"><b>${esc(fmt(v))}</b> / ${esc(fmt(f.goal.target))}</span>
         </div>
         <div class="bar" role="progressbar" aria-label="${esc(f.label)}" aria-valuemin="0" aria-valuemax="${Math.round(shown(f, f.goal.target, prefs))}" aria-valuenow="${Math.round(shown(f, v, prefs))}">
           <div class="bar-fill ${g.state === 'under' ? '' : g.state}" style="width:${Math.min(100, g.pct * 100).toFixed(1)}%"></div>
         </div>
         <div class="goal-status">${status}
-          ${chips ? `<span class="chip-row">${chips.map(c => `<button type="button" class="add-chip" data-water="${c}" aria-label="Add ${c} ${esc(units.label(f.dim, prefs))} of water">+${c}</button>`).join('')}</span>` : ''}
+          ${chips ? `<span class="chip-row">${chips.map(c => `<button type="button" class="add-chip" data-quick-t="${esc(t.key)}" data-quick="${c}" aria-label="Add ${c}${qc.unit ? ` ${esc(qc.unit)}` : ''} to ${esc(name)}">+${c}</button>`).join('')}</span>` : ''}
         </div>
       </div>`;
   }
@@ -199,9 +202,12 @@
       HL.entry.open(tile.dataset.log);
       return;
     }
-    const water = e.target.closest('[data-water]');
-    if (water) {
-      HL.entry.quickLog('hydration', { amount: units.toCanonical('volume', Number(water.dataset.water), units.unitFor('volume', repo.getSettings().units)) });
+    const quick = e.target.closest('[data-quick-t]');
+    if (quick) {
+      const t = repo.tracker(quick.dataset.quickT);
+      const prefs = repo.getSettings().units;
+      const f = domain.quickChips(t, prefs).field;
+      HL.entry.quickLog(t.key, { [f.key]: units.fieldToCanonical(f, Number(quick.dataset.quick), prefs) });
       return;
     }
     const check = e.target.closest('[data-check]');
@@ -244,7 +250,7 @@
     const prefs = repo.getSettings().units;
     const candidates = [];
     for (const t of repo.trackers()) for (const f of t.fields) {
-      if ((f.kind === 'number' || f.kind === 'duration') && (f.agg === 'sum' || f.goal) && t.kind !== 'checklist') candidates.push({ t, f });
+      if ((f.kind === 'number' || f.kind === 'duration') && !f.hidden && (f.agg === 'sum' || f.goal || !t.builtIn) && t.kind !== 'checklist') candidates.push({ t, f });
     }
     const unitOf = f => f.kind === 'duration' ? 'min' : f.dim ? units.label(f.dim, prefs) : (f.unit || '');
     const body = candidates.map(({ t, f }) => {

@@ -99,6 +99,7 @@
     const groups = new Map();
     let html = '';
     for (const f of tracker.fields) {
+      if (f.hidden) continue;
       if (f.group) { if (!groups.has(f.group)) groups.set(f.group, []); groups.get(f.group).push(f); continue; }
       html += fieldHtml(f, values[f.key], prefs, placeholders[f.key] ?? '');
     }
@@ -123,6 +124,8 @@
     const errors = {};
     for (const f of tracker.fields) {
       if (f.computed) continue;
+      // Hidden fields aren't on the form; keep whatever the entry already had
+      if (f.hidden) { if (original[f.key] != null) values[f.key] = original[f.key]; continue; }
       const el = form.elements[f.key];
       if (!el) continue;
       if (f.kind === 'number' || f.kind === 'duration') {
@@ -188,15 +191,14 @@
     const presets = tracker.quick?.presets
       ? repo.all('presets').filter(p => p.trackerType === trackerKey).sort((a, b) => a.name.localeCompare(b.name))
       : [];
-    const chipUnit = tracker.quick?.chips && units.unitFor(tracker.fields[0].dim, prefs);
-    const chips = chipUnit ? tracker.quick.chips[chipUnit] || [] : [];
+    const chips = domain.quickChips(tracker, prefs);
     const when = entry ? entry.timestamp : util.localISO();
 
     const body = `
-      ${chips.length && !entry ? `
+      ${chips && !entry ? `
         <div class="field">
-          <span class="field-label">Quick add</span>
-          <div class="chip-row">${chips.map(c => `<button type="button" class="add-chip" data-quick="${c}">+${c} ${esc(units.label(tracker.fields[0].dim, prefs))}</button>`).join('')}</div>
+          <span class="field-label">Quick add · ${esc(chips.field.label)}</span>
+          <div class="chip-row">${chips.values.map(c => `<button type="button" class="add-chip" data-quick="${c}">+${c}${chips.unit ? ` ${esc(chips.unit)}` : ''}</button>`).join('')}</div>
         </div>` : ''}
       ${presets.length ? `
         <div class="field">
@@ -245,10 +247,9 @@
       }
       const quick = e.target.closest('[data-quick]');
       if (quick) {
-        const f = tracker.fields[0];
-        const ml = units.toCanonical(f.dim, Number(quick.dataset.quick), units.unitFor(f.dim, prefs));
+        const f = domain.quickChips(tracker, prefs).field;
         api.close();
-        quickLog(tracker.key, { [f.key]: ml });
+        quickLog(tracker.key, { [f.key]: units.fieldToCanonical(f, Number(quick.dataset.quick), prefs) });
         return;
       }
       const preset = e.target.closest('[data-preset]');

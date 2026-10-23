@@ -27,6 +27,11 @@
     const s = repo.getSettings();
     el.innerHTML = `
       <header class="page-head"><div><h1 class="page-title">More</h1><p class="page-sub">Settings and your data</p></div></header>
+      <section class="settings-section" aria-labelledby="trk-h">
+        <h2 class="section-label" id="trk-h">Trackers</h2>
+        <p class="field-hint block-gap">Track anything: create your own with any fields. Order here is the order on Today.</p>
+        ${HL.trackers.listHtml()}
+      </section>
       <section class="settings-section" aria-labelledby="units-h">
         <h2 class="section-label" id="units-h">Units</h2>
         <div class="settings-card">
@@ -55,9 +60,10 @@
   }
 
   function onClick(e) {
+    if (HL.trackers.onClick(e)) return;
     if (e.target.closest('[data-act="exercises"]')) HL.exercises.pick({ manage: true });
   }
 
   HL.views = HL.views || {};
-  HL.views.more = { title: 'More', stores: [], render, onChange, onClick };
+  HL.views.more = { title: 'More', stores: ['trackers'], render, onChange, onClick };
 })(globalThis.HL = globalThis.HL || {});

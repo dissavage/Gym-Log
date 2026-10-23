@@ -110,7 +110,7 @@
     const ordered = [...tracker.fields].sort((a, b) => rank(a) - rank(b));
     const parts = [];
     for (const f of ordered) {
-      if (hidden.has(f.key)) continue;
+      if (hidden.has(f.key) || f.hidden) continue;
       const v = values[f.key];
       if (v == null || v === '' || (f.computed === 'workoutVolume' && !v)) continue;
       const text = formatField(f, v, prefs);
@@ -122,6 +122,71 @@
       if (parts.length >= max) break;
     }
     return parts.join(' · ');
+  }
+
+  // Quick-add buttons for a tracker's primary field, in the user's display unit
+  function quickChips(tracker, prefs) {
+    const chips = tracker.quick?.chips;
+    if (!chips) return null;
+    const field = tracker.fields.find(f => f.primary && !f.hidden) || tracker.fields.find(f => !f.hidden);
+    if (!field) return null;
+    const key = field.dim ? units.unitFor(field.dim, prefs) : '_';
+    const values = chips[key] || [];
+    if (!values.length) return null;
+    return { field, values, unit: field.dim ? units.label(field.dim, prefs) : (field.unit || '') };
+  }
+
+  /* ════════════════════════════════════
+     TRACKER BUILDER — defaults, keys, validation for custom trackers
+     ════════════════════════════════════ */
+  const FIELD_KINDS = [
+    ['number', 'Number'], ['scale', '1–5 scale'], ['bool', 'Yes / No'],
+    ['duration', 'Duration'], ['text', 'Text'], ['time', 'Time of day'],
+  ];
+
+  const DIM_STEPS = { mass: { lb: 1, kg: 0.5 }, volume: { floz: 1, ml: 50 }, distance: { mi: 0.1, km: 0.1 }, length: { in: 0.25, cm: 0.5 } };
+
+  // Sensible defaults per kind; "agg" is how several logs in one day combine
+  function fieldDefaults(kind) {
+    const base = { kind, dim: null, unit: null, goal: null, hidden: false };
+    switch (kind) {
+      case 'number':   return { ...base, step: 1, min: 0, agg: 'sum' };
+      case 'scale':    return { ...base, min: 1, max: 5, agg: 'avg', scaleLabels: ['Low', 'High'] };
+      case 'bool':     return { ...base, agg: 'max' };
+      case 'duration': return { ...base, step: 5, min: 0, agg: 'sum' };
+      default:         return { ...base, agg: 'last' };
+    }
+  }
+
+  const slugify = s => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'field';
+
+  // Keys are fixed at creation so renaming a field never orphans its data
+  function uniqueKey(label, taken, prefix = '') {
+    const base = prefix + slugify(label);
+    let key = base;
+    for (let i = 2; taken.has(key); i++) key = `${base}_${i}`;
+    return key;
+  }
+
+  // Returns a list of human-readable problems; empty means valid
+  function validateTracker(def, others = []) {
+    const errors = [];
+    const name = (def.name || '').trim();
+    if (!name) errors.push('Give the tracker a name.');
+    if (name && others.some(t => t.id !== def.id && !t.deletedAt && t.name.trim().toLowerCase() === name.toLowerCase())) {
+      errors.push(`You already have a tracker called “${name}”.`);
+    }
+    const visible = (def.fields || []).filter(f => !f.hidden);
+    if (!visible.length) errors.push('Add at least one field.');
+    const labels = new Set();
+    for (const f of def.fields || []) {
+      const label = (f.label || '').trim();
+      if (!label) { errors.push('Every field needs a label.'); continue; }
+      if (labels.has(label.toLowerCase())) errors.push(`Two fields are called “${label}”.`);
+      labels.add(label.toLowerCase());
+      if (f.goal && !(f.goal.target > 0)) errors.push(`The goal for “${label}” must be above 0.`);
+    }
+    return errors;
   }
 
   /* ════════════════════════════════════
@@ -332,7 +397,8 @@
 
   HL.domain = {
     COMPUTED, withComputed, isNumericField, fieldNumber, aggregate, goalProgress,
-    formatField, summarizeEntry,
+    formatField, summarizeEntry, quickChips,
+    FIELD_KINDS, DIM_STEPS, fieldDefaults, slugify, uniqueKey, validateTracker,
     E1RM_MAX_REPS, e1rm, countsForPR, isWorkingSet, sessionVolume, exerciseIndex,
     personalBests, addToBests, setPRs, sessionPRs, matchingSet, formatSet, workoutSummary,
     exerciseProgress, prLog,

@@ -64,5 +64,9 @@
     return field.dim ? (s[unitFor(field.dim, prefs)] ?? 1) : 1;
   }
 
-  HL.units = { DIMS, SYSTEMS, unitFor, toCanonical, fromCanonical, label, display, format, stepFor };
+  // A value typed in the display unit → what's stored (unit-less fields store as typed)
+  const fieldToCanonical = (field, value, prefs) =>
+    (field.dim ? toCanonical(field.dim, value, unitFor(field.dim, prefs)) : value);
+
+  HL.units = { DIMS, SYSTEMS, unitFor, toCanonical, fromCanonical, label, display, format, stepFor, fieldToCanonical };
 })(globalThis.HL = globalThis.HL || {});
