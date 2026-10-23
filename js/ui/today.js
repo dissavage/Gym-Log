@@ -25,6 +25,8 @@
         </div>
       </header>
       ${resumeHtml()}
+      ${HL.data.installHintHtml()}
+      ${HL.data.reminderHtml()}
       <section aria-labelledby="qa-h">
         <h2 id="qa-h" class="section-label section-gap">Quick log</h2>
         <div class="qa-grid">${trackers.map(t => tileHtml(t, byType(t.key), prefs)).join('')}</div>
@@ -196,6 +198,7 @@
      ACTIONS
      ════════════════════════════════════ */
   function onClick(e) {
+    if (HL.data.onClick(e)) return;
     const tile = e.target.closest('[data-log]');
     if (tile) {
       if (tile.dataset.log === 'supplements') { focusChecklist(); return; }
@@ -350,5 +353,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.today = { title: 'Today', stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts'], render, onClick };
+  HL.views.today = { title: 'Today', stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts', 'meta'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

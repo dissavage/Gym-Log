@@ -98,10 +98,6 @@
     return rec;
   }
 
-  function putMany(store, records, opts) {
-    return records.map(r => put(store, r, opts));
-  }
-
   function softDelete(store, id) {
     const rec = get(store, id);
     if (!rec) return null;
@@ -119,6 +115,28 @@
     cache[store].delete(id);
     enqueue({ store, op: 'delete', key: id });
     emit('change', { store, record: rec, removed: true });
+  }
+
+  /* ── Backup support ── */
+  // Every data store, soft-deleted rows included, so a restore also restores deletions
+  function snapshot() {
+    const stores = {};
+    for (const s of schema.DATA_STORES) stores[s] = all(s, { deleted: true });
+    return stores;
+  }
+
+  // Imported records keep their own timestamps so later imports can tell what's newer
+  function importRecords(items) {
+    for (const { store, record } of items) put(store, record, { touch: false });
+  }
+
+  // Deletes only this app's storage: the healthlog database and healthlog.* settings
+  async function wipe() {
+    pending.clear();
+    clearTimeout(flushTimer);
+    flushTimer = null;
+    await db.deleteDatabase();
+    for (const k of Object.keys(localStorage)) if (k.startsWith('healthlog.')) localStorage.removeItem(k);
   }
 
   /* ── Lookups ── */
@@ -184,14 +202,17 @@
     await db.write(ops);
   }
 
-  // Adds built-ins that don't exist yet; never overwrites user edits (goals, order, archive, renames)
+  // Adds built-ins that don't exist yet; never overwrites user edits (goals, order, archive, renames).
+  // Seeds carry a fixed old timestamp so, when a backup is restored onto a fresh install,
+  // any edited copy in the backup counts as newer and wins.
+  const SEED_TIME = '2000-01-01T00:00:00.000Z';
+
   function seedBuiltins() {
-    for (const def of schema.BUILTIN_TRACKERS) {
-      if (!cache.trackers.has(def.id)) put('trackers', make('tracker', def));
-    }
-    for (const def of schema.BUILTIN_EXERCISES) {
-      if (!cache.exercises.has(def.id)) put('exercises', make('exercise', def));
-    }
+    const seed = (store, type, def) => {
+      if (!cache[store].has(def.id)) put(store, { ...make(type, def), createdAt: SEED_TIME, updatedAt: SEED_TIME }, { touch: false });
+    };
+    for (const def of schema.BUILTIN_TRACKERS) seed('trackers', 'tracker', def);
+    for (const def of schema.BUILTIN_EXERCISES) seed('exercises', 'exercise', def);
   }
 
   function purgeDeleted() {
@@ -233,7 +254,7 @@
 
   HL.repo = {
     on, boot, flush, flushNow, pendingCount,
-    make, newEntry, get, all, put, putMany, softDelete, restore, hardDelete,
+    make, newEntry, get, all, put, softDelete, restore, hardDelete, snapshot, importRecords, wipe,
     tracker, trackers, entries, lastEntry, getMeta, setMeta,
     getSettings, setSettings,
   };

@@ -6,7 +6,7 @@
 
   // A script that failed to download (e.g. a CDN 503 mid-deploy) would otherwise leave
   // buttons that silently do nothing — stop and offer a reload instead.
-  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'views'];
+  const REQUIRED = ['util', 'units', 'schema', 'domain', 'db', 'repo', 'toast', 'sheet', 'entry', 'rest', 'exercises', 'workout', 'charts', 'trackers', 'backup', 'data', 'views'];
   const VIEWS = ['today', 'workout', 'history', 'insights', 'more'];
   const missing = REQUIRED.filter(k => !HL[k]).concat(VIEWS.filter(v => !HL.views?.[v]));
   if (missing.length) {
@@ -103,6 +103,48 @@
   }
 
   /* ════════════════════════════════════
+     OFFLINE / UPDATES — a new version waits for a tap instead of silently swapping code
+     ════════════════════════════════════ */
+  function showUpdateBanner(worker) {
+    const root = document.getElementById('banners');
+    if (root.querySelector('[data-banner="update"]')) return;
+    root.insertAdjacentHTML('beforeend', `
+      <div class="banner" data-banner="update" role="status">
+        <span aria-hidden="true">✨</span>
+        <span class="banner-msg">A new version of Health Log is ready.</span>
+        <button type="button" class="btn btn-primary btn-sm" data-banner-act="update">Refresh</button>
+      </div>`);
+    root.querySelector('[data-banner-act="update"]').addEventListener('click', async () => {
+      await repo.flushNow().catch(() => {});
+      worker.postMessage('SKIP_WAITING');
+    });
+  }
+
+  async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+      const watch = w => w?.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(w);
+      });
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
+      watch(reg.installing);
+      reg.addEventListener('updatefound', () => watch(reg.installing));
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloading) return;
+        reloading = true;
+        location.reload();
+      });
+      // A home-screen app can stay open for days: look for updates whenever it comes back
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      (await navigator.serviceWorker.ready).active?.postMessage('ENSURE_CACHE');
+    } catch (err) {
+      HL.toast(`Offline mode couldn’t start: ${err.message}`, { kind: 'error' });
+    }
+  }
+
+  /* ════════════════════════════════════
      BOOT
      ════════════════════════════════════ */
   function wire() {
@@ -154,6 +196,8 @@
     wire();
     for (const name of VIEWS) HL.views[name]?.init?.();
     show('today');
+    registerServiceWorker();
+    HL.data.requestPersist();
   }
 
   HL.app = { show, start, markDirty };

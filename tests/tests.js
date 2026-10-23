@@ -440,6 +440,76 @@
   });
 
   /* ════════════════════════════════════
+     BACKUP & IMPORT
+     ════════════════════════════════════ */
+  suite('Backup, import dedupe & CSV', () => {
+    const { backup } = HL;
+    const rec = (id, updatedAt, extra = {}) => ({ id, type: 'body', updatedAt, timestamp: '2026-10-01T07:00:00.000-07:00', dayKey: '2026-10-01', values: { weight: 80 }, ...extra });
+    const stores = { entries: [rec('a', '2026-10-01T00:00:00Z'), rec('b', '2026-10-02T00:00:00Z', { deletedAt: '2026-10-03T00:00:00Z' })], trackers: [] };
+    const file = backup.buildBackup(stores, { restSec: 120 }, '2026-10-22T00:00:00Z');
+
+    test('backup carries app tag, schema version, settings and every data store', () => {
+      assert.eq([file.app, file.schemaVersion, file.settings.restSec], ['healthlog', schema.SCHEMA_VERSION, 120]);
+      assert.eq(Object.keys(file.stores).sort(), [...schema.DATA_STORES].sort());
+    });
+    test('round trip: export → wipe → import restores everything, deleted rows included', () => {
+      const v = backup.validateBackup(JSON.parse(JSON.stringify(file)));
+      assert.eq(v.errors, []);
+      const diff = backup.diffImport({}, v.snapshot.stores);
+      assert.eq(diff.add.map(x => x.record.id).sort(), ['a', 'b']);
+      assert.eq(diff.add.find(x => x.record.id === 'b').record.deletedAt, '2026-10-03T00:00:00Z');
+    });
+    test('re-importing the same file adds nothing', () => {
+      const diff = backup.diffImport(stores, backup.validateBackup(file).snapshot.stores);
+      assert.eq([diff.add.length, diff.update.length, diff.duplicates], [0, 0, 2]);
+    });
+    test('a newer copy updates; an older copy never overwrites', () => {
+      const incoming = { entries: [rec('a', '2026-10-05T00:00:00Z', { values: { weight: 81 } }), rec('b', '2026-09-01T00:00:00Z')] };
+      const diff = backup.diffImport(stores, incoming);
+      assert.eq(diff.update.map(x => x.record.id), ['a']);
+      assert.eq(diff.duplicates, 1);
+    });
+    test('records imported from another app dedupe by source key even with new ids', () => {
+      const mine = { entries: [rec('x', '2026-10-01T00:00:00Z', { source: { app: 'gym-tracker', key: 'w1' } })] };
+      const diff = backup.diffImport(mine, { entries: [rec('y', '2026-10-09T00:00:00Z', { source: { app: 'gym-tracker', key: 'w1' } })] });
+      assert.eq([diff.add.length, diff.duplicates], [0, 1]);
+    });
+    test('rejects things that aren’t backups', () => {
+      assert.ok(backup.validateBackup(null).errors.length);
+      assert.ok(backup.validateBackup({ app: 'other' }).errors.length);
+      assert.ok(/old Gym Tracker/.test(backup.validateBackup({ app: 'gym-tracker-legacy' }).errors[0]));
+      assert.ok(/newer version/.test(backup.validateBackup({ ...file, schemaVersion: 99 }).errors[0]));
+    });
+    test('damaged records are skipped and counted, not imported', () => {
+      const v = backup.validateBackup({ ...file, stores: { entries: [rec('ok', '2026-10-01T00:00:00Z'), { id: 5 }, null] } });
+      assert.eq([v.snapshot.stores.entries.length, v.skippedInvalid], [1, 2]);
+    });
+    test('entries without dates or values fail validation', () =>
+      assert.ok(backup.validateBackup({ ...file, stores: { entries: [{ id: 'z', type: 'body', updatedAt: 'x' }] } }).errors.length));
+    test('CSV escaping: commas, quotes, newlines, formula injection; numbers untouched', () => {
+      assert.eq(backup.csvCell('a,b'), '"a,b"');
+      assert.eq(backup.csvCell('say "hi"'), '"say ""hi"""');
+      assert.eq(backup.csvCell('=SUM(A1)'), `"'=SUM(A1)"`);
+      assert.eq(backup.csvCell(-5), '-5');
+      assert.eq(backup.csvCell(null), '');
+    });
+    test('tracker CSV uses display units in headers and values', () => {
+      const csv = backup.trackerCSV(tracker('body'), [{ dayKey: '2026-10-01', timestamp: '2026-10-01T07:05:00.000-07:00', values: { weight: units.toCanonical('mass', 185, 'lb') }, notes: 'post, run' }], imperial);
+      const [head, row] = csv.split('\r\n');
+      assert.ok(head.startsWith('date,time,Bodyweight (lb),Body fat (%)'));
+      assert.ok(row.startsWith('2026-10-01,07:05,185,'));
+      assert.ok(row.endsWith('"post, run"'));
+    });
+    test('workout CSV has one row per set with est. 1RM', () => {
+      const t = tracker('workout');
+      const csv = backup.trackerCSV(t, [{ dayKey: '2026-10-01', timestamp: '2026-10-01T18:00:00.000-07:00', values: { name: 'Push', exercises: [{ exerciseId: 'bench', sets: [S(100, 5), S(60, 10, 'warmup')] }] } }], metric, id => id.toUpperCase());
+      const rows = csv.split('\r\n');
+      assert.eq(rows.length, 3);
+      assert.eq(rows[1], '2026-10-01,18:00,Push,BENCH,1,working,100,5,,,116.7,');
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');

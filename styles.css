@@ -452,6 +452,19 @@ body.rest-flash::after { content: ''; position: fixed; inset: 0; pointer-events:
 abbr[title] { text-decoration: none; cursor: help; }
 
 /* ════════════════════════════════════
+   DATA
+   ════════════════════════════════════ */
+.nudge { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 14px; background: var(--surf); border: 1px solid var(--border); border-left: 3px solid var(--blue); border-radius: 14px; font-size: 13px; }
+.nudge-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.settings-row.stack { flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 16px; }
+.notice-text { padding-top: 8px; border-top: 1px solid var(--border); }
+.mini-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mini-table th, .mini-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: right; }
+.mini-table th:first-child { text-align: left; font-weight: 600; }
+.mini-table thead th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.about { text-align: center; margin-top: 18px; }
+
+/* ════════════════════════════════════
    SETTINGS
    ════════════════════════════════════ */
 .settings-section { margin-bottom: 24px; }

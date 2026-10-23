@@ -49,7 +49,9 @@
             <span aria-hidden="true" class="muted">›</span>
           </button>
         </div>
-      </section>`;
+      </section>
+      ${HL.data.sectionHtml()}`;
+    HL.data.fillStorage(el.querySelector('#storage-box'));
   }
 
   function onChange(e) {
@@ -60,10 +62,10 @@
   }
 
   function onClick(e) {
-    if (HL.trackers.onClick(e)) return;
+    if (HL.trackers.onClick(e) || HL.data.onClick(e)) return;
     if (e.target.closest('[data-act="exercises"]')) HL.exercises.pick({ manage: true });
   }
 
   HL.views = HL.views || {};
-  HL.views.more = { title: 'More', stores: ['trackers'], render, onChange, onClick };
+  HL.views.more = { title: 'More', stores: ['trackers', 'meta'], render, onChange, onClick };
 })(globalThis.HL = globalThis.HL || {});

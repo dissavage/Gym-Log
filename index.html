@@ -6,8 +6,15 @@
   <meta name="theme-color" content="#0f0f0f">
   <meta name="color-scheme" content="dark">
   <title>Health Log</title>
-  <!-- Bump ?v= on every release so phones never mix cached old and new files -->
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Health Log">
+  <!-- Bump ?v= (and VERSION in sw.js) on every release so phones never mix cached old and new files -->
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -33,24 +40,26 @@
 
 <div id="toast-root" aria-live="polite"></div>
 
-<script src="js/util.js?v=5"></script>
-<script src="js/units.js?v=5"></script>
-<script src="js/schema.js?v=5"></script>
-<script src="js/domain.js?v=5"></script>
-<script src="js/db.js?v=5"></script>
-<script src="js/repo.js?v=5"></script>
-<script src="js/ui/toast.js?v=5"></script>
-<script src="js/ui/sheet.js?v=5"></script>
-<script src="js/ui/entry.js?v=5"></script>
-<script src="js/ui/rest.js?v=5"></script>
-<script src="js/ui/exercises.js?v=5"></script>
-<script src="js/ui/workout.js?v=5"></script>
-<script src="js/ui/charts.js?v=5"></script>
-<script src="js/ui/history.js?v=5"></script>
-<script src="js/ui/insights.js?v=5"></script>
-<script src="js/ui/trackers.js?v=5"></script>
-<script src="js/ui/today.js?v=5"></script>
-<script src="js/ui/settings.js?v=5"></script>
-<script src="js/app.js?v=5"></script>
+<script src="js/util.js?v=6"></script>
+<script src="js/units.js?v=6"></script>
+<script src="js/schema.js?v=6"></script>
+<script src="js/domain.js?v=6"></script>
+<script src="js/backup.js?v=6"></script>
+<script src="js/db.js?v=6"></script>
+<script src="js/repo.js?v=6"></script>
+<script src="js/ui/toast.js?v=6"></script>
+<script src="js/ui/sheet.js?v=6"></script>
+<script src="js/ui/entry.js?v=6"></script>
+<script src="js/ui/rest.js?v=6"></script>
+<script src="js/ui/exercises.js?v=6"></script>
+<script src="js/ui/workout.js?v=6"></script>
+<script src="js/ui/charts.js?v=6"></script>
+<script src="js/ui/history.js?v=6"></script>
+<script src="js/ui/insights.js?v=6"></script>
+<script src="js/ui/trackers.js?v=6"></script>
+<script src="js/ui/data.js?v=6"></script>
+<script src="js/ui/today.js?v=6"></script>
+<script src="js/ui/settings.js?v=6"></script>
+<script src="js/app.js?v=6"></script>
 </body>
 </html>
