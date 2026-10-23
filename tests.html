@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Health Log — tests</title>
+  <style>
+    body { background: #0f0f0f; color: #f1f0ee; font: 14px/1.5 -apple-system, 'Segoe UI', sans-serif; padding: 16px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    #summary { font-weight: 800; margin-bottom: 14px; }
+    .pass { color: #22c55e; } .fail { color: #ff8a8a; }
+    li { list-style: none; padding: 3px 0; border-bottom: 1px solid #2c2c2c; }
+    pre { white-space: pre-wrap; color: #8e8e8e; font-size: 12px; margin: 4px 0 4px 18px; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: #8e8e8e; margin: 16px 0 6px; }
+  </style>
+</head>
+<body>
+  <h1>Health Log — pure function tests</h1>
+  <p id="summary" role="status">Running…</p>
+  <div id="results"></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/units.js"></script>
+  <script src="js/schema.js"></script>
+  <script src="js/domain.js"></script>
+  <script src="tests/tests.js"></script>
+</body>
+</html>
