@@ -1,5 +1,5 @@
 /* ════════════════════════════════════
-   TODAY — quick-log grid, totals vs goals, supplements checklist, today's log
+   TODAY — streak strip, up-next workout, daily-log tiles, quick add, supplements, today's log
    ════════════════════════════════════ */
 (function (HL) {
   'use strict';
@@ -12,123 +12,228 @@
      ════════════════════════════════════ */
   function render(el) {
     const today = util.dayKey();
-    const prefs = repo.getSettings().units;
+    const settings = repo.getSettings();
+    const prefs = settings.units;
     const trackers = repo.trackers();
-    const todays = repo.entries({ dayKey: today });
+    const all = repo.entries();
+    const todays = all.filter(e => e.dayKey === today);
     const byType = type => todays.filter(e => e.type === type);
 
     el.innerHTML = `
       <header class="page-head">
         <div>
+          <p class="page-kicker">${esc(`${util.fmtDay(today, { weekday: 'long' })} · ${util.fmtDay(today, { month: 'short', day: 'numeric' })}`)}</p>
           <h1 class="page-title">Today</h1>
-          <p class="page-sub">${esc(util.fmtDay(today))}</p>
         </div>
       </header>
-      ${resumeHtml()}
       ${HL.data.installHintHtml()}
       ${HL.data.reminderHtml()}
-      <section aria-labelledby="qa-h">
-        <h2 id="qa-h" class="section-label section-gap">Quick log</h2>
-        <div class="qa-grid">${trackers.map(t => tileHtml(t, byType(t.key), prefs)).join('')}</div>
+      ${streakHtml(all, today, settings.weekStart)}
+      ${upNextHtml()}
+      <section class="daily" aria-labelledby="daily-h">
+        <div class="sec-hdr">
+          <h2 id="daily-h" class="section-label">Daily log</h2>
+          <button type="button" class="link-btn" data-act="edit-goals">Edit goals</button>
+        </div>
+        <div class="tile-grid">
+          ${tilesHtml(trackers, byType, prefs, today)}
+          <button type="button" class="tile tile-new" data-act="new-tracker">${util.icon('plus', 18)}<span>New tracker</span></button>
+        </div>
+        ${quickRowsHtml(trackers, prefs)}
       </section>
-      ${goalsCardHtml(trackers, byType, prefs)}
       ${checklistCardHtml(byType('supplements'))}
       ${logCardHtml(todays, prefs)}`;
   }
 
-  function draftProgress(d) {
-    const sets = d.exercises.flatMap(e => e.sets);
-    return `${sets.filter(s => s.done).length}/${sets.length} sets`;
-  }
-
-  function resumeHtml() {
-    const d = HL.workout.current();
-    if (!d) return '';
-    return `
-      <button type="button" class="resume-card" data-act="resume">
-        <span class="resume-icon" aria-hidden="true">🏋️</span>
-        <span class="grow"><span class="resume-title">${d.editingId ? 'Editing' : 'Workout in progress'}: ${esc(d.name)}</span>
-          <span class="resume-sub">${esc(draftProgress(d))} · tap to resume</span></span>
-        <span aria-hidden="true">›</span>
-      </button>`;
-  }
-
-  function tileHtml(t, entries, prefs) {
-    let val = 'Tap to log';
-    let done = false;
-    const d = t.kind === 'workout' && HL.workout.current();
-    if (d) {
-      val = `In progress · ${draftProgress(d)}`;
-    } else if (t.kind === 'checklist') {
-      const items = activeItems(t.key);
-      const taken = takenMap(entries);
-      if (items.length) { val = `${items.filter(i => taken.has(i.id)).length}/${items.length} taken`; done = taken.size >= items.length; }
-    } else if (entries.length) {
-      const f = t.fields.find(x => x.primary && !x.hidden) || t.fields.find(x => !x.hidden && domain.isNumericField(x)) || t.fields.find(x => !x.hidden);
-      const v = domain.aggregate(t, entries, f.key);
-      val = v != null ? domain.formatField(f, v, prefs) : `${entries.length} logged`;
-      done = !!(f.goal && domain.goalProgress(v, f.goal).state === 'met');
-      if (t.kind === 'workout') val = `Done · ${val}`;
-    } else if (t.kind === 'workout') {
-      val = 'Start';
+  /* ── Streak strip: this week at a glance ── */
+  function streakHtml(all, today, weekStart) {
+    const logged = new Set();
+    const lifted = new Set();
+    for (const e of all) {
+      logged.add(e.dayKey);
+      if (e.type === 'workout') lifted.add(e.dayKey);
     }
+    const streak = domain.streaks([...logged], today).current;
+    const start = util.weekStartOf(today, weekStart);
+    const end = util.addDays(start, 6);
+    const workouts = all.filter(e => e.type === 'workout' && e.dayKey >= start && e.dayKey <= end).length;
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const key = util.addDays(start, i);
+      const state = lifted.has(key) ? 'done' : key === today ? 'today' : key > today ? 'future' : logged.has(key) ? 'logged' : 'empty';
+      return `
+        <li class="sd is-${state}${key === today ? ' is-now' : ''}">
+          <span class="sd-l">${esc(util.fmtDay(key, { weekday: 'narrow' }))}</span>
+          <span class="sd-c">${state === 'done' ? util.icon('check', 14) : state === 'logged' ? '<i></i>' : ''}</span>
+        </li>`;
+    }).join('');
     return `
-      <button type="button" class="qa-tile" data-log="${esc(t.key)}" aria-label="${esc(`${t.name}: ${val}`)}">
-        <span class="qa-icon" aria-hidden="true">${t.icon}</span>
-        <span><span class="qa-name">${esc(t.name)}</span><span class="qa-val${done ? ' done' : ''}">${done ? '✓ ' : ''}${esc(val)}</span></span>
-      </button>`;
-  }
-
-  /* ── Goals ── */
-  function goalFields(trackers) {
-    const out = [];
-    for (const t of trackers) for (const f of t.fields) if (f.goal && !f.hidden) out.push({ t, f });
-    return out;
-  }
-
-  function goalsCardHtml(trackers, byType, prefs) {
-    const rows = goalFields(trackers);
-    const body = rows.length ? rows.map(({ t, f }) => goalRowHtml(t, f, byType(t.key), prefs)).join('') : `
-      <div class="empty-state compact"><strong>No daily goals yet</strong>Set targets for calories, protein, water or sleep to track them here.</div>`;
-    return `
-      <section class="card" aria-labelledby="goals-h">
-        <div class="card-hdr">
-          <h2 id="goals-h" class="section-label">Today vs goals</h2>
-          <button type="button" class="link-btn" data-act="edit-goals">Edit goals</button>
-        </div>
-        ${body}
+      <section class="card streak" aria-label="Streak this week">
+        <div class="streak-num" aria-hidden="true"><span class="streak-val">${streak}</span><span class="streak-lbl">day streak</span></div>
+        <ol class="streak-week" aria-hidden="true">${days}</ol>
+        <p class="sr-only">${workouts} workout${workouts === 1 ? '' : 's'} this week. ${streak}-day logging streak.</p>
       </section>`;
   }
 
+  /* ── Up next: the template after the last one done (or the workout in progress) ── */
+  const shortDay = key => util.fmtDay(key, { weekday: 'short', month: 'short', day: 'numeric' });
+
+  function upNextCard(label, when, title, sub, primary, alts) {
+    return `
+      <section class="card upnext" aria-labelledby="upnext-h">
+        <div class="upnext-top"><span class="upnext-lbl">${esc(label)}</span>${when ? `<span class="upnext-when">${esc(when)}</span>` : ''}</div>
+        <h2 class="upnext-title" id="upnext-h">${esc(title)}</h2>
+        ${sub ? `<p class="upnext-sub">${esc(sub)}</p>` : ''}
+        ${primary}
+        ${alts.length ? `<div class="upnext-alt">${alts.join('')}</div>` : ''}
+      </section>`;
+  }
+
+  function upNextHtml() {
+    const d = HL.workout.current();
+    if (d) {
+      const sets = d.exercises.flatMap(e => e.sets);
+      const mins = d.editingId ? null : Math.max(0, Math.round((Date.now() - Date.parse(d.startedAt)) / 60000));
+      return upNextCard(d.editingId ? 'Editing' : 'In progress', '', d.name,
+        `${sets.filter(s => s.done).length}/${sets.length} sets${mins != null ? ` · ${mins} min` : ''}`,
+        `<button type="button" class="btn btn-primary btn-block" data-act="resume">${util.icon('play', 18)} Resume workout</button>`, []);
+    }
+    const last = repo.lastEntry('workout');
+    const repeat = last ? `<button type="button" class="btn btn-ghost" data-act="repeat-last"><span>Repeat last (${esc(last.values.name || 'Workout')})</span></button>` : '';
+    const next = HL.workout.nextTemplate();
+    if (!next) {
+      return upNextCard('Up next', '', 'No templates yet', 'Save your usual routines as templates to start them from here.',
+        `<button type="button" class="btn btn-primary btn-block" data-act="start-empty">${util.icon('play', 18)} Start empty workout</button>`,
+        [repeat || '<button type="button" class="btn btn-ghost" data-act="other-templates">Templates</button>']);
+    }
+    const lastOfThis = repo.entries({ type: 'workout' }).find(e => e.values.templateId === next.id);
+    const slots = next.exercises.filter(s => repo.get('exercises', s.exerciseId));
+    const muscles = [...new Set(slots.slice(0, 3).flatMap(s => repo.get('exercises', s.exerciseId).primary))];
+    const totalSets = slots.reduce((n, s) => n + (s.sets || 0), 0);
+    const sub = [`${slots.length} exercise${slots.length === 1 ? '' : 's'}`, `${totalSets} set${totalSets === 1 ? '' : 's'}`, HL.exercises.muscleNames(muscles)].filter(Boolean).join(' · ');
+    return upNextCard('Up next', lastOfThis ? `Last done ${shortDay(lastOfThis.dayKey)}` : 'Not done yet', next.name, sub,
+      `<button type="button" class="btn btn-primary btn-block" data-act="start-next" data-id="${next.id}">${util.icon('play', 18)} Start workout</button>`,
+      [repeat, '<button type="button" class="btn btn-ghost" data-act="other-templates">Other templates</button>'].filter(Boolean));
+  }
+
+  /* ── Daily-log tiles: one per tracker, goals shown as thin bars ── */
   // Goal numbers are shown in display units; duration goals stay in minutes
   const shown = (f, v, prefs) => (f.dim ? units.display(f.dim, v, prefs) : v);
+  const plainDp = f => (typeof f.step === 'number' && String(f.step).includes('.') ? String(f.step).split('.')[1].length : 0);
 
-  function goalRowHtml(t, f, entries, prefs) {
-    const v = domain.aggregate(t, entries, f.key) || 0;
-    const g = domain.goalProgress(v, f.goal);
-    const unit = f.dim ? ` ${units.label(f.dim, prefs)}` : f.unit ? ` ${f.unit}` : '';
-    const fmt = n => f.kind === 'duration' ? util.fmtDuration(n) : `${util.fmtNum(shown(f, n, prefs), f.dim ? 1 : 0)}${unit}`;
-    const remain = Math.abs(g.delta);
-    const status = g.state === 'met' ? '<span class="met">✓ Goal met</span>'
-      : g.state === 'over' ? `<span class="over">▲ ${esc(fmt(remain))} over</span>`
-      : `<span>${esc(fmt(remain))} to go</span>`;
-    const qc = domain.quickChips(t, prefs);
-    const chips = qc && qc.field.key === f.key ? qc.values : null;
-    // A one-field tracker (Water) reads better under its own name than the field's
-    const name = t.fields.filter(x => !x.hidden).length === 1 ? t.name : f.label;
-    return `
-      <div class="goal-row">
-        <div class="goal-top">
-          <span class="goal-name">${t.icon ? `<span aria-hidden="true">${t.icon}</span> ` : ''}${esc(name)}</span>
-          <span class="goal-nums"><b>${esc(fmt(v))}</b> / ${esc(fmt(f.goal.target))}</span>
-        </div>
-        <div class="bar" role="progressbar" aria-label="${esc(f.label)}" aria-valuemin="0" aria-valuemax="${Math.round(shown(f, f.goal.target, prefs))}" aria-valuenow="${Math.round(shown(f, v, prefs))}">
-          <div class="bar-fill ${g.state === 'under' ? '' : g.state}" style="width:${Math.min(100, g.pct * 100).toFixed(1)}%"></div>
-        </div>
-        <div class="goal-status">${status}
-          ${chips ? `<span class="chip-row">${chips.map(c => `<button type="button" class="add-chip" data-quick-t="${esc(t.key)}" data-quick="${c}" aria-label="Add ${c}${qc.unit ? ` ${esc(qc.unit)}` : ''} to ${esc(name)}">+${c}</button>`).join('')}</span>` : ''}
-        </div>
-      </div>`;
+  // [number, unit] so the number can be big and the unit small
+  function parts(f, v, prefs) {
+    if (v == null) return ['—', ''];
+    if (f.kind === 'duration') return [util.fmtDuration(v), ''];
+    if (f.kind === 'scale') return [util.fmtNum(v, 1), `/ ${f.max || 5}`];
+    if (f.kind === 'bool') return [v ? 'Yes' : 'No', ''];
+    if (f.dim) return [util.fmtNum(units.display(f.dim, v, prefs), 1), units.label(f.dim, prefs)];
+    return [util.fmtNum(v, plainDp(f)), f.unit || ''];
+  }
+
+  const joinUnit = ([n, u]) => (u ? (u === '%' ? `${n}%` : `${n} ${u}`) : n);
+  const target = (f, prefs) => joinUnit(parts(f, f.goal.target, prefs));
+
+  function barHtml(f, v, prefs, cls = '') {
+    const g = domain.goalProgress(v || 0, f.goal);
+    const over = g.state === 'over' && f.goal.dir === 'atMost';
+    return `<span class="tbar ${cls}" role="progressbar" aria-label="${esc(f.label)}" aria-valuemin="0"
+      aria-valuemax="${Math.round(shown(f, f.goal.target, prefs))}" aria-valuenow="${Math.round(shown(f, v || 0, prefs))}">
+      <span class="tbar-fill${over ? ' over' : ''}" style="width:${Math.min(100, g.pct * 100).toFixed(1)}%"></span></span>`;
+  }
+
+  function bigHtml(f, v, prefs, size, goalText) {
+    const [n, u] = parts(f, v, prefs);
+    const unit = goalText ? ` / ${goalText}` : u ? ` ${u}` : '';
+    return `<span class="tile-big${v == null ? ' is-empty' : ''}"><span class="tile-num tile-num-${size}">${esc(n)}</span>${unit ? `<span class="tile-unit">${esc(unit)}</span>` : ''}</span>`;
+  }
+
+  function tileHtml(t, entries, prefs, today) {
+    const visible = t.fields.filter(f => !f.hidden);
+    const goals = visible.filter(f => f.goal);
+    const primary = visible.find(f => f.primary) || visible.find(f => domain.isNumericField(f)) || visible[0];
+    const value = f => (entries.length ? domain.aggregate(t, entries, f.key) : null);
+    const top = `
+      <span class="tile-top"><span class="tile-name">${util.trackerIcon(t, 16)}<span>${esc(t.name)}</span></span>
+        <span class="tile-add">${util.icon('plus', 18)}</span></span>`;
+    let body = '';
+    let label = 'nothing logged today';
+    let wide = false;
+
+    if (goals.length >= 2) {
+      wide = true;
+      const main = goals.includes(primary) ? primary : goals[0];
+      const v = value(main);
+      label = v == null ? `nothing logged today, goal ${target(main, prefs)}` : `${joinUnit(parts(main, v, prefs))} of ${target(main, prefs)}`;
+      body = `${bigHtml(main, v, prefs, 'xl', target(main, prefs))}${barHtml(main, v, prefs)}
+        <span class="tile-minis">${goals.filter(f => f !== main).map(f => {
+          const fv = value(f);
+          return `<span class="mini"><span class="mini-lbl">${esc(f.label)}</span>
+            <span class="mini-val">${esc(parts(f, fv ?? 0, prefs)[0])}<span class="tile-unit"> / ${esc(target(f, prefs))}</span></span>
+            ${barHtml(f, fv, prefs, 'thin')}</span>`;
+        }).join('')}</span>`;
+    } else if (goals.length === 1) {
+      const f = goals[0];
+      const v = value(f);
+      label = v == null ? `nothing logged today, goal ${target(f, prefs)}` : `${joinUnit(parts(f, v, prefs))} of ${target(f, prefs)}`;
+      body = `${bigHtml(f, v, prefs, 'l', target(f, prefs))}${barHtml(f, v, prefs)}`;
+    } else if (!entries.length || !primary) {
+      body = `${bigHtml(primary || {}, null, prefs, 'l')}<span class="tile-sub">Tap to log</span>`;
+    } else {
+      const v = value(primary);
+      const latest = entries[0];
+      let sub = `${entries.length} logged · ${util.fmtTime(latest.timestamp)}`;
+      if (primary.kind === 'scale') sub = `${primary.label} · ${util.fmtTime(latest.timestamp)}`;
+      if (primary.kind === 'number' && primary.agg === 'last' && primary.dim) sub = weekChange(t, primary, v, prefs, today) || sub;
+      label = joinUnit(parts(primary, v, prefs));
+      body = `${bigHtml(primary, v, prefs, 'l')}<span class="tile-sub${sub.startsWith('↓') || sub.startsWith('↑') ? ' is-delta' : ''}">${esc(sub)}</span>`;
+    }
+    return {
+      wide,
+      html: `
+        <button type="button" class="tile${wide ? ' tile-wide' : ''}" data-log="${esc(t.key)}" aria-label="${esc(`Log ${t.name}: ${label}`)}">
+          ${top}${body}
+        </button>`,
+    };
+  }
+
+  // Full-width tiles wait until the half-width row they'd interrupt is complete,
+  // so the two-column grid has no holes and reading order matches what's on screen
+  function tilesHtml(trackers, byType, prefs, today) {
+    const out = [];
+    const waiting = [];
+    let col = 0;
+    for (const t of trackers.filter(x => x.kind !== 'workout' && x.kind !== 'checklist')) {
+      const tile = tileHtml(t, byType(t.key), prefs, today);
+      if (tile.wide) {
+        if (col === 0) out.push(tile.html); else waiting.push(tile.html);
+        continue;
+      }
+      out.push(tile.html);
+      col = 1 - col;
+      if (col === 0) out.push(...waiting.splice(0));
+    }
+    return [...out, ...waiting].join('');
+  }
+
+  // "↓ 0.6 lb this week": today's value against the last one logged 7+ days ago
+  function weekChange(t, f, now, prefs, today) {
+    const ref = repo.entries({ type: t.key }).find(e => e.dayKey <= util.addDays(today, -7) && e.values[f.key] != null);
+    if (!ref || now == null) return null;
+    const delta = util.round(units.display(f.dim, now, prefs) - units.display(f.dim, ref.values[f.key], prefs), 1);
+    if (!delta) return 'No change this week';
+    return `${delta < 0 ? '↓' : '↑'} ${util.fmtNum(Math.abs(delta), 1)} ${units.label(f.dim, prefs)} this week`;
+  }
+
+  /* ── Quick-add chips (water and any tracker with quick-add amounts) ── */
+  function quickRowsHtml(trackers, prefs) {
+    const rows = trackers.map(t => ({ t, qc: domain.quickChips(t, prefs) })).filter(x => x.qc);
+    if (!rows.length) return '';
+    return `<div class="quick-rows">${rows.map(({ t, qc }) => `
+      <div class="quick-row">
+        <span class="quick-lbl">${esc(t.name)}</span>
+        <span class="chip-row">${qc.values.map(c => `<button type="button" class="add-chip" data-quick-t="${esc(t.key)}" data-quick="${c}"
+          aria-label="Add ${c}${qc.unit ? ` ${esc(qc.unit)}` : ''} to ${esc(t.name)}">+${c}${qc.unit ? ` ${esc(qc.unit)}` : ''}</button>`).join('')}</span>
+      </div>`).join('')}</div>`;
   }
 
   /* ── Supplements checklist ── */
@@ -156,7 +261,7 @@
         return `
           <li class="check-row">
             <button type="button" class="check-btn" data-check="${i.id}" aria-pressed="${!!e}">
-              <span class="check-box" aria-hidden="true">${e ? '✓' : ''}</span>
+              <span class="check-box" aria-hidden="true">${e ? util.icon('check', 16) : ''}</span>
               <span class="check-text"><span class="check-name">${esc(i.name)}</span>
               ${sub ? `<span class="check-sub">${esc(sub)}</span>` : ''}</span>
             </button>
@@ -164,9 +269,9 @@
       }).join('')}</ul>` : `
       <div class="empty-state compact"><strong>No daily items yet</strong>Add the supplements or meds you take each day, then tick them off here.</div>`;
     return `
-      <section class="card" aria-labelledby="supp-h">
-        <div class="card-hdr">
-          <h2 id="supp-h" class="section-label">${t.icon} Supplements${items.length ? ` · ${[...taken.keys()].filter(id => items.some(i => i.id === id)).length}/${items.length}` : ''}</h2>
+      <section class="card list-card" aria-labelledby="supp-h">
+        <div class="card-hdr list-hdr">
+          <h2 id="supp-h" class="section-label">${esc(t.name)}${items.length ? ` · ${[...taken.keys()].filter(id => items.some(i => i.id === id)).length}/${items.length}` : ''}</h2>
           <button type="button" class="link-btn" data-act="manage-items">${items.length ? 'Edit' : '+ Add item'}</button>
         </div>
         ${list}
@@ -177,15 +282,15 @@
   function logCardHtml(todays, prefs) {
     const rows = todays.filter(e => e.type !== 'supplements');
     return `
-      <section class="card" aria-labelledby="log-h">
-        <div class="card-hdr"><h2 id="log-h" class="section-label">Logged today</h2></div>
+      <section class="card list-card" aria-labelledby="log-h">
+        <div class="card-hdr list-hdr"><h2 id="log-h" class="section-label">Logged today</h2></div>
         ${rows.length ? `<ul class="log-list">${rows.map(e => {
           const t = repo.tracker(e.type);
           if (!t) return '';
           return `
             <li><button type="button" class="log-row" data-edit="${e.id}">
-              <span class="log-icon" aria-hidden="true">${t.icon}</span>
-              <span class="log-main"><span class="log-name">${esc(t.name)}</span>
+              <span class="icon-sq" aria-hidden="true">${util.trackerIcon(t, 18)}</span>
+              <span class="log-main"><span class="log-name">${esc(t.kind === 'workout' ? e.values.name || t.name : t.name)}</span>
                 <span class="log-sum">${esc(domain.summarizeEntry(t, e, prefs) || 'No values')}</span></span>
               <span class="log-time">${esc(util.fmtTime(e.timestamp))}</span>
             </button></li>`;
@@ -200,11 +305,7 @@
   function onClick(e) {
     if (HL.data.onClick(e)) return;
     const tile = e.target.closest('[data-log]');
-    if (tile) {
-      if (tile.dataset.log === 'supplements') { focusChecklist(); return; }
-      HL.entry.open(tile.dataset.log);
-      return;
-    }
+    if (tile) { HL.entry.open(tile.dataset.log); return; }
     const quick = e.target.closest('[data-quick-t]');
     if (quick) {
       const t = repo.tracker(quick.dataset.quickT);
@@ -221,18 +322,17 @@
       if (entry) HL.entry.open(entry.type, { entry });
       return;
     }
-    const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'resume') HL.app.show('workout');
-    if (act === 'edit-goals') openGoalsSheet();
-    if (act === 'manage-items') openItemsSheet();
-  }
-
-  function focusChecklist() {
-    const card = document.getElementById('supp-h');
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    card?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
-    const first = document.querySelector('[data-check]') || document.querySelector('[data-act="manage-items"]');
-    first?.focus({ preventScroll: true });
+    const btn = e.target.closest('[data-act]');
+    switch (btn?.dataset.act) {
+      case 'resume':
+      case 'other-templates': HL.app.show('workout'); break;
+      case 'start-next':      HL.workout.start(btn.dataset.id); break;
+      case 'start-empty':     HL.workout.startEmpty(); break;
+      case 'repeat-last':     HL.workout.repeatLast(); break;
+      case 'new-tracker':     HL.trackers.openBuilder(null); break;
+      case 'edit-goals':      openGoalsSheet(); break;
+      case 'manage-items':    openItemsSheet(); break;
+    }
   }
 
   function toggleItem(itemId) {
@@ -262,7 +362,7 @@
       const val = f.goal ? util.round(shown(f, f.goal.target, prefs), f.dim ? 1 : 0) : '';
       return `
         <div class="field">
-          <label class="field-label" for="${id}">${t.icon} ${esc(t.name)} · ${esc(f.label)}</label>
+          <label class="field-label" for="${id}">${util.trackerIcon(t, 14)} ${esc(t.name)} · ${esc(f.label)}</label>
           <div class="row-gap">
             <div class="stepper-wrap"><input class="stepper-input stepper-sm" id="${id}" name="${id}" inputmode="decimal" value="${val}" placeholder="No goal">
               <span class="stepper-unit">${esc(unitOf(f))}</span></div>
@@ -275,7 +375,7 @@
     }).join('') + '<p class="field-hint">Leave a value empty to remove that goal.</p>';
 
     HL.sheet.open({
-      title: 'Daily goals', icon: '🎯', body,
+      title: 'Daily goals', icon: util.icon('target', 20), body,
       footer: '<button type="submit" class="btn btn-primary">Save goals</button>',
       onSubmit: (form, api) => {
         const changed = new Map();
@@ -303,7 +403,7 @@
         <li class="check-row">
           <span class="check-text grow"><span class="check-name">${esc(i.name)}</span>
             <span class="check-sub">${esc([i.dose, i.unit].filter(x => x != null && x !== '').join(' ') || 'No dose set')}</span></span>
-          <button type="button" class="icon-btn" data-del-item="${i.id}" aria-label="Remove ${esc(i.name)}">✕</button>
+          <button type="button" class="icon-btn" data-del-item="${i.id}" aria-label="Remove ${esc(i.name)}">${util.icon('close', 18)}</button>
         </li>`).join('')}</ul>` : '<p class="muted small">No items yet.</p>';
     };
     const body = `
@@ -320,7 +420,7 @@
       <p class="field-hint" id="it-err" role="alert"></p>`;
 
     HL.sheet.open({
-      title: 'Supplements & meds', icon: '💊', body,
+      title: 'Supplements & meds', icon: util.icon('supplements', 20), body,
       footer: '<button type="submit" class="btn btn-primary">Add item</button>',
       onMount: api => {
         api.form.addEventListener('click', e => {
@@ -354,5 +454,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.today = { stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts', 'meta'], render, onClick };
+  HL.views.today = { stores: ['entries', 'trackers', 'checklistItems', 'presets', 'drafts', 'meta', 'templates', 'exercises'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

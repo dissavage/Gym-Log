@@ -5,7 +5,7 @@
   'use strict';
 
   const { util, schema, repo } = HL;
-  const { esc } = util;
+  const { esc, icon } = util;
 
   const MUSCLE_NAME = Object.fromEntries(schema.MUSCLES.map(m => [m.id, m.name]));
   const muscleNames = ids => (ids || []).map(id => MUSCLE_NAME[id] || id).join(', ');
@@ -51,7 +51,7 @@
         <li><button type="button" class="pick-row" data-pick="${e.id}" aria-pressed="${picked.has(e.id)}">
           <span class="grow"><span class="pick-name">${esc(e.name)}</span>
           <span class="pick-sub">${esc([muscleNames(e.primary), e.equipment].filter(Boolean).join(' · '))}${e.builtIn ? '' : ' · custom'}</span></span>
-          <span class="pick-mark" aria-hidden="true">${manage ? '›' : picked.has(e.id) ? '✓' : '+'}</span>
+          <span class="pick-mark" aria-hidden="true">${icon(manage ? 'chev-right' : picked.has(e.id) ? 'check' : 'plus', 18)}</span>
         </button></li>`).join('')}</ul>${create}`;
     };
 
@@ -67,8 +67,8 @@
       <div id="pick-list">${listHtml()}</div>`;
 
     HL.sheet.open({
-      title: manage ? 'Exercise library' : title, icon: '🏋️', body,
-      footer: `<button type="submit" class="btn btn-primary">Done</button>`,
+      title: manage ? 'Exercise library' : title, icon: icon('workout', 20), body, cancel: false,
+      footer: `<button type="submit" class="btn btn-primary btn-block">Done</button>`,
       onSubmit: (form, api) => api.close(),
       onMount: api => {
         const list = api.form.querySelector('#pick-list');
@@ -90,7 +90,7 @@
             picked.add(ex.id);
             onPick(ex);
             row.setAttribute('aria-pressed', 'true');
-            row.querySelector('.pick-mark').textContent = '✓';
+            row.querySelector('.pick-mark').innerHTML = icon('check', 18);
             return;
           }
           if (e.target.closest('[data-act="create"]')) {
@@ -140,12 +140,12 @@
         <div class="field grow"><label class="field-label" for="ex-rmax">to</label>
           <input class="input" id="ex-rmax" name="repMax" inputmode="numeric" value="${ex.repMax ?? ''}" placeholder="e.g. 10"></div>
       </div>
+      ${exercise ? '<button type="button" class="btn btn-danger btn-block block-top" data-act="archive">Hide from the library</button>' : ''}
       <p class="field-hint" id="ex-err" role="alert"></p>`;
 
     HL.sheet.open({
-      title: exercise ? 'Edit exercise' : 'New exercise', icon: '🏋️', body,
-      footer: `${exercise ? '<button type="button" class="btn btn-danger" data-act="archive">Hide</button>' : ''}
-        <button type="submit" class="btn btn-primary">Save</button>`,
+      title: exercise ? 'Edit exercise' : 'New exercise', icon: icon('workout', 20), body,
+      footer: '<button type="submit" class="btn btn-primary">Save</button>',
       onMount: api => api.form.addEventListener('click', e => {
         const chip = e.target.closest('[data-sec]');
         if (chip) {

@@ -160,6 +160,7 @@
      BOOT
      ════════════════════════════════════ */
   function wire() {
+    for (const b of util.$$('.tab-btn')) b.querySelector('.tab-icon').innerHTML = util.icon(b.dataset.view, 22);
     document.querySelector('.tabbar').addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (btn) show(btn.dataset.view);

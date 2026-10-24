@@ -76,12 +76,32 @@
     sync();
   }
 
+  const BUTTONS = `
+    <button type="button" class="rest-btn" data-rest="-15" aria-label="15 seconds less rest">−15</button>
+    <button type="button" class="rest-btn" data-rest="15" aria-label="15 seconds more rest">+15</button>
+    <button type="button" class="rest-btn" data-rest="stop">Skip</button>`;
+
+  // The pill (other tabs) and the Workout tab's inline card share one state and one set of handlers
+  function build(el) {
+    el.innerHTML = el.matches('[data-rest-card]') ? `
+      <div class="rest-bar" aria-hidden="true"><div class="rest-fill"></div></div>
+      <div class="rest-main"><span class="rest-lbl">Rest</span><span class="rest-time" role="timer" aria-live="off"></span></div>
+      <div class="rest-btns">${BUTTONS}</div>` : `
+      <div class="rest-bar" aria-hidden="true"><div class="rest-fill"></div></div>
+      <span class="rest-lbl">Rest</span>
+      <span class="rest-time" role="timer" aria-live="off"></span>${BUTTONS}`;
+    el.addEventListener('click', e => {
+      const b = e.target.closest('[data-rest]');
+      if (!b) return;
+      if (b.dataset.rest === 'stop') stop(); else adjust(Number(b.dataset.rest));
+    });
+  }
+
   function sync() {
     const r = getState();
-    const el = pill();
-    if (!el) return;
+    const widgets = [pill(), ...document.querySelectorAll('[data-rest-card]')].filter(Boolean);
     if (!r) {
-      el.hidden = true;
+      for (const el of widgets) el.hidden = true;
       clearInterval(timer);
       timer = null;
       return;
@@ -95,30 +115,19 @@
     }
     if (left <= 0 && now - r.endsAt > STALE_MS) { stop(); return; }
 
-    el.hidden = false;
-    el.classList.toggle('over', left <= 0);
     const pct = r.durationSec ? Math.max(0, Math.min(1, (r.endsAt - now) / (r.durationSec * 1000))) : 0;
     const text = left > 0 ? mmss(left) : `Over ${mmss(Math.floor((now - r.endsAt) / 1000))} ago`;
-    if (!el.firstElementChild) {
-      el.innerHTML = `
-        <div class="rest-bar" aria-hidden="true"><div class="rest-fill"></div></div>
-        <span class="rest-lbl">Rest</span>
-        <span class="rest-time" role="timer" aria-live="off"></span>
-        <button type="button" class="rest-btn" data-rest="-15" aria-label="15 seconds less rest">−15</button>
-        <button type="button" class="rest-btn" data-rest="15" aria-label="15 seconds more rest">+15</button>
-        <button type="button" class="rest-btn" data-rest="stop">Skip</button>`;
-      el.addEventListener('click', e => {
-        const b = e.target.closest('[data-rest]');
-        if (!b) return;
-        if (b.dataset.rest === 'stop') stop(); else adjust(Number(b.dataset.rest));
-      });
+    for (const el of widgets) {
+      if (!el.firstElementChild) build(el);
+      el.hidden = false;
+      el.classList.toggle('over', left <= 0);
+      el.querySelector('.rest-fill').style.width = `${(pct * 100).toFixed(1)}%`;
+      el.querySelector('.rest-time').textContent = text;
+      el.querySelector('[data-rest="stop"]').textContent = left > 0 ? 'Skip' : 'Dismiss';
     }
-    el.querySelector('.rest-fill').style.width = `${(pct * 100).toFixed(1)}%`;
-    el.querySelector('.rest-time').textContent = text;
-    el.querySelector('[data-rest="stop"]').textContent = left > 0 ? 'Skip' : 'Dismiss';
   }
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); });
 
-  HL.rest = { bind, start, stop, unlockAudio };
+  HL.rest = { bind, start, stop, sync, unlockAudio };
 })(globalThis.HL = globalThis.HL || {});

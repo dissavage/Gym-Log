@@ -4,7 +4,7 @@
 (function (HL) {
   'use strict';
 
-  const { units, repo } = HL;
+  const { util, units, repo } = HL;
 
   function systemOf(prefs) {
     for (const [name, sys] of Object.entries(units.SYSTEMS)) {
@@ -15,7 +15,7 @@
 
   function segRow(name, label, sub, value, options) {
     return `
-      <div class="settings-row">
+      <div class="settings-row seg-row">
         <div><div class="settings-lbl" id="${name}-lbl">${label}</div>${sub ? `<div class="settings-sub">${sub}</div>` : ''}</div>
         <div class="seg" role="radiogroup" aria-labelledby="${name}-lbl">
           ${options.map(([v, l]) => `<label><input type="radio" name="${name}" value="${v}" ${value === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
@@ -26,7 +26,7 @@
   function render(el) {
     const s = repo.getSettings();
     el.innerHTML = `
-      <header class="page-head"><div><h1 class="page-title">More</h1><p class="page-sub">Settings and your data</p></div></header>
+      <header class="page-head"><div><p class="page-kicker">Settings &amp; your data</p><h1 class="page-title">More</h1></div></header>
       <section class="settings-section" aria-labelledby="trk-h">
         <h2 class="section-label" id="trk-h">Trackers</h2>
         <p class="field-hint block-gap">Track anything: create your own with any fields. Order here is the order on Today.</p>
@@ -47,7 +47,7 @@
           ${segRow('plateStep', 'Weight +/− step', s.units.mass === 'lb' ? '5 lb or 2.5 lb' : '2.5 kg or 1.25 kg', s.plateStep, [['standard', 'Standard'], ['fine', 'Fine']])}
           <button type="button" class="settings-row settings-link" data-act="exercises">
             <span><span class="settings-lbl">Exercise library</span><span class="settings-sub">Add, edit or hide exercises</span></span>
-            <span aria-hidden="true" class="muted">›</span>
+            <span class="row-ico" aria-hidden="true">${util.icon('chev-right', 18)}</span>
           </button>
         </div>
       </section>

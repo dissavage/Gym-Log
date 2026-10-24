@@ -23,14 +23,14 @@
     return field.unit || '';
   }
 
-  function stepperHtml(field, value, prefs, placeholder) {
+  function stepperHtml(field, value, prefs, placeholder, main) {
     const id = `f-${field.key}`;
     const v = inputValue(field, value, prefs);
     const step = field.kind === 'duration' ? (field.step || 5) : units.stepFor(field, prefs);
     return `
       <div class="field">
         <label class="field-label" for="${id}">${esc(field.label)}</label>
-        <div class="stepper" data-step="${step}" data-min="${field.min ?? ''}" data-max="${field.max ?? ''}">
+        <div class="stepper${main ? ' stepper-main' : ''}" data-step="${step}" data-min="${field.min ?? ''}" data-max="${field.max ?? ''}">
           <button type="button" class="stepper-btn" data-stepper="-1" aria-label="Decrease ${esc(field.label)}">−</button>
           <div class="stepper-wrap">
             <input id="${id}" class="stepper-input" name="${field.key}" inputmode="decimal" autocomplete="off"
@@ -56,7 +56,7 @@
       </fieldset>`;
   }
 
-  function fieldHtml(field, value, prefs, placeholder) {
+  function fieldHtml(field, value, prefs, placeholder, main) {
     const id = `f-${field.key}`;
     if (field.computed) {
       return `
@@ -68,7 +68,7 @@
     switch (field.kind) {
       case 'number':
       case 'duration':
-        return stepperHtml(field, value, prefs, placeholder);
+        return stepperHtml(field, value, prefs, placeholder, main);
       case 'scale': {
         const opts = [];
         for (let i = field.min || 1; i <= (field.max || 5); i++) opts.push({ value: i, label: String(i) });
@@ -97,11 +97,14 @@
 
   function fieldsHtml(tracker, values, prefs, placeholders) {
     const groups = new Map();
+    // The tracker's lead number gets the big stepper
+    const steppers = tracker.fields.filter(f => !f.hidden && !f.group && !f.computed && (f.kind === 'number' || f.kind === 'duration'));
+    const main = steppers.find(f => f.primary) || steppers[0];
     let html = '';
     for (const f of tracker.fields) {
       if (f.hidden) continue;
       if (f.group) { if (!groups.has(f.group)) groups.set(f.group, []); groups.get(f.group).push(f); continue; }
-      html += fieldHtml(f, values[f.key], prefs, placeholders[f.key] ?? '');
+      html += fieldHtml(f, values[f.key], prefs, placeholders[f.key] ?? '', f === main);
     }
     for (const [name, fields] of groups) {
       const filled = fields.some(f => values[f.key] != null);
@@ -219,16 +222,13 @@
       </details>
       ${tracker.quick?.presets && !entry ? `
         <label class="check-inline"><input type="checkbox" name="__savePreset"> Save as quick ${tracker.key === 'nutrition' ? 'food' : 'pick'}</label>` : ''}
+      ${entry ? '<button type="button" class="btn btn-danger btn-block block-top" data-act="delete">Delete this entry</button>' : ''}
       <p class="field-hint" id="entry-err" role="alert"></p>`;
-
-    const footer = `
-      ${entry ? '<button type="button" class="btn btn-danger" data-act="delete">Delete</button>' : ''}
-      <button type="submit" class="btn btn-primary">${entry ? 'Save' : 'Log'}</button>`;
 
     HL.sheet.open({
       title: entry ? `Edit ${tracker.name}` : tracker.name,
-      icon: tracker.icon,
-      body, footer,
+      icon: util.trackerIcon(tracker, 20),
+      body, footer: `<button type="submit" class="btn btn-primary">${entry ? 'Save' : 'Log'}</button>`,
       onMount: api => wire(api, tracker, entry, prefs, presets, original),
       onSubmit: (form, api) => submit(form, api, tracker, entry, prefs, original),
     });

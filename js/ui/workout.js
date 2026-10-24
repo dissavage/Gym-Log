@@ -13,6 +13,7 @@
   const SET_TYPES = { warmup: ['Warm-up', 'W'], working: ['Working', ''], drop: ['Drop', 'D'], failure: ['Failure', 'F'] };
   const TYPE_CYCLE = ['working', 'warmup', 'drop', 'failure'];
   const COLORS = ['orange', 'green', 'blue', 'purple', 'yellow'];
+  const COLOR_NAME = { orange: 'Lime', green: 'Green', blue: 'Blue', purple: 'Purple', yellow: 'Yellow' };  // 'orange' is the stored id of the accent colour
   const PR_LABEL = { weight: 'Weight PR', e1rm: 'Est. 1RM PR', reps: 'Rep PR', volume: 'Volume PR' };
 
   let draft = null;
@@ -20,6 +21,8 @@
   let viewEl = null;
   let elapsedTimer = null;
   let swipe = null;
+  let panelOpen = false;       // detail panel under the active set (UI only, not saved)
+  let focusOverride = null;    // exercise picked from a collapsed row
   let suppressClickUntil = 0;
 
   /* ════════════════════════════════════
@@ -95,9 +98,11 @@
   function begin(props) {
     draft = repo.make('draft', { id: DRAFT_ID, name: 'Workout', templateId: null, editingId: null, startedAt: util.localISO(), exercises: [], active: null, rest: null, ...props });
     draft.active = draft.exercises.flatMap(e => e.sets).find(s => !s.done)?.id || null;
+    panelOpen = false;
+    focusOverride = null;
     saveDraft();
     render();
-    viewEl.scrollTop = 0;
+    if (viewEl) viewEl.scrollTop = 0;
   }
 
   function startEmpty() {
@@ -148,22 +153,35 @@
     clearInterval(elapsedTimer);
     if (!draft) { el.innerHTML = startHtml(); return; }
     el.innerHTML = activeHtml();
+    updateProgress();
+    HL.rest.sync();
     tickElapsed();
     if (!draft.editingId) elapsedTimer = setInterval(tickElapsed, 1000);
   }
 
+  const sortedTemplates = () => repo.all('templates').sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+
+  // The template after the one used last time, wrapping around (also shown on Today)
+  function nextTemplate(templates = sortedTemplates(), last = repo.lastEntry('workout')) {
+    if (!templates.length) return null;
+    const i = last ? templates.findIndex(t => t.id === last.values.templateId) : -1;
+    return templates[(i + 1) % templates.length];
+  }
+
   function startHtml() {
     const last = repo.lastEntry('workout');
-    const templates = repo.all('templates').sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    const templates = sortedTemplates();
+    const next = nextTemplate(templates, last);
     const exName = id => repo.get('exercises', id)?.name;
     return `
-      <header class="page-head"><div><h1 class="page-title">Workout</h1><p class="page-sub">Start a session</p></div></header>
-      <button type="button" class="btn btn-primary btn-block" data-act="start-empty">Start empty workout</button>
+      <header class="page-head"><div><p class="page-kicker">Start a session</p><h1 class="page-title">Workout</h1></div></header>
+      <button type="button" class="btn btn-primary btn-block" data-act="start-empty">${util.icon('plus', 20)} Start empty workout</button>
       ${last ? `
         <button type="button" class="wo-repeat" data-act="repeat-last">
-          <span class="wo-repeat-icon" aria-hidden="true">↻</span>
+          <span class="icon-sq icon-sq-lg" aria-hidden="true">${util.icon('repeat', 20)}</span>
           <span class="grow"><span class="wo-repeat-title">Repeat last: ${esc(last.values.name || 'Workout')}</span>
           <span class="wo-repeat-sub">${esc(util.fmtDay(last.dayKey, { weekday: 'short', month: 'short', day: 'numeric' }))} · ${last.values.exercises.length} exercise${last.values.exercises.length === 1 ? '' : 's'}</span></span>
+          ${util.icon('chev-right', 18)}
         </button>` : ''}
       <section class="block-top" aria-labelledby="tpl-h">
         <div class="card-hdr">
@@ -171,91 +189,164 @@
           <button type="button" class="link-btn" data-act="new-template">+ New template</button>
         </div>
         ${templates.length ? templates.map(t => `
-          <div class="tpl-card c-${esc(t.color || 'orange')}">
-            <button type="button" class="tpl-main" data-act="start-template" data-id="${t.id}" aria-label="Start ${esc(t.name)}">
-              <span class="tpl-name">${esc(t.name)}</span>
+          <div class="tpl-card c-${esc(t.color || 'orange')}${t === next ? ' is-next' : ''}">
+            <button type="button" class="tpl-main" data-act="start-template" data-id="${t.id}" aria-label="Start ${esc(t.name)}${t === next ? ' (up next)' : ''}">
+              <span class="tpl-top"><span class="tpl-dot" aria-hidden="true"></span><span class="tpl-name">${esc(t.name)}</span>${t === next ? '<span class="tpl-pill" aria-hidden="true">Up next</span>' : ''}</span>
               <span class="tpl-sub">${esc(t.exercises.map(s => exName(s.exerciseId)).filter(Boolean).join(' · ') || 'No exercises yet')}</span>
             </button>
-            <button type="button" class="icon-btn" data-act="edit-template" data-id="${t.id}" aria-label="Edit ${esc(t.name)}">✎</button>
+            <button type="button" class="icon-btn" data-act="edit-template" data-id="${t.id}" aria-label="Edit ${esc(t.name)}">${util.icon('pencil', 18)}</button>
           </div>`).join('') : `
           <div class="empty-state compact"><strong>No templates yet</strong>Save your usual routines (Push, Pull, Legs…) to start them in one tap — or finish a workout and save it as a template.</div>`}
       </section>`;
   }
 
+  /* ── Which exercise is in focus: the one holding the active set, else the first unfinished ── */
+  const isDoneEx = ex => ex.sets.length > 0 && ex.sets.every(s => s.done);
+
+  function focusedEx() {
+    if (focusOverride) {
+      const ex = findEx(focusOverride);
+      const activeEx = draft.active && findSet(draft.active)?.ex;
+      if (ex && (!activeEx || activeEx === ex)) return ex;
+    }
+    const byActive = draft.active && findSet(draft.active)?.ex;
+    return byActive || draft.exercises.find(ex => !isDoneEx(ex)) || draft.exercises[draft.exercises.length - 1] || null;
+  }
+
+  const restLabel = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+
   function activeHtml() {
-    const prefs = repo.getSettings().units;
-    const all = draft.exercises.flatMap(e => e.sets);
     const editing = draft.editingId ? repo.get('entries', draft.editingId) : null;
+    const kicker = editing ? `Editing · ${util.fmtDay(editing.dayKey, { weekday: 'short', month: 'short', day: 'numeric' })}` : draft.name;
     return `
-      <header class="wo-top">
-        <div class="grow">
-          <button type="button" class="wo-name" data-act="rename">${esc(draft.name)} <span aria-hidden="true" class="muted">✎</span></button>
-          <p class="page-sub">${editing ? `Editing · ${esc(util.fmtDay(editing.dayKey, { weekday: 'short', month: 'short', day: 'numeric' }))}` : '<span data-elapsed>0:00</span>'}
-            · <span data-progress>${all.filter(s => s.done).length}/${all.length} sets</span></p>
-        </div>
-        <button type="button" class="btn btn-success btn-sm" data-act="finish">${editing ? 'Save' : 'Finish'}</button>
+      <header class="wo-head">
+        <button type="button" class="icon-btn" data-act="back" aria-label="Back to Today">${util.icon('chev-down', 22)}</button>
+        <button type="button" class="wo-title" data-act="rename" aria-label="Rename workout: ${esc(draft.name)}">
+          <span class="wo-kicker">${esc(kicker)} ${util.icon('pencil', 12)}</span>
+          ${editing ? `<span class="wo-timer">${esc(draft.name)}</span>` : '<span class="wo-timer" data-elapsed>0:00</span>'}
+        </button>
+        <button type="button" class="btn btn-primary wo-finish" data-act="finish">${editing ? 'Save' : 'Finish'}</button>
       </header>
-      <div class="wo-list">${draft.exercises.map(ex => cardHtml(ex, prefs)).join('') || `
-        <div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — sets fill in from last time automatically.</div>`}</div>
-      <button type="button" class="btn btn-dashed btn-block" data-act="add-exercise">+ Add exercise</button>
+      <div class="wo-progress">
+        <div class="wo-progress-txt"><span data-progress></span><span data-progress-pct></span></div>
+        <div class="wo-pbar" aria-hidden="true"><span data-progress-fill></span></div>
+      </div>
+      <div class="rest-card" data-rest-card hidden></div>
+      <div class="wo-list">${bodyHtml()}</div>
+      <button type="button" class="btn btn-dashed btn-block wo-add-ex" data-act="add-exercise">${util.icon('plus', 18)} Add exercise</button>
       <p class="wo-discard"><button type="button" class="link-btn" data-act="discard">${editing ? 'Cancel editing' : 'Discard workout'}</button></p>`;
   }
 
-  function cardHtml(ex, prefs) {
-    const exercise = repo.get('exercises', ex.exerciseId) || { name: 'Unknown exercise', primary: [] };
+  function bodyHtml() {
+    if (!draft.exercises.length) {
+      return '<div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — sets fill in from last time automatically.</div>';
+    }
+    const prefs = repo.getSettings().units;
+    const focus = focusedEx();
+    const done = draft.exercises.filter(ex => ex !== focus && isDoneEx(ex));
+    const next = draft.exercises.filter(ex => ex !== focus && !isDoneEx(ex));
+    return `
+      ${done.length ? `<h2 class="section-label wo-group-lbl">Done</h2>${done.map(ex => doneRowHtml(ex, prefs)).join('')}` : ''}
+      ${focus ? focusedHtml(focus, prefs) : ''}
+      ${next.length ? `<h2 class="section-label wo-group-lbl">Up next</h2>${next.map(ex => nextRowHtml(ex, prefs)).join('')}` : ''}`;
+  }
+
+  const exerciseOf = ex => repo.get('exercises', ex.exerciseId) || { name: 'Unknown exercise', primary: [] };
+
+  function doneRowHtml(ex, prefs) {
+    const exercise = exerciseOf(ex);
+    const counted = ex.sets.filter(domain.countsForPR);
+    const best = counted.reduce((b, s) => ((domain.e1rm(s.weightKg || 0, s.reps) || s.reps / 100) > (domain.e1rm(b.weightKg || 0, b.reps) || b.reps / 100) ? s : b), counted[0]);
+    const pr = domain.sessionPRs(history(ex.exerciseId), ex.sets.filter(s => s.done)).length > 0;
+    const sub = `${ex.sets.length} set${ex.sets.length === 1 ? '' : 's'}${best ? ` · best ${setText(best, prefs)}` : ''}`;
+    return `
+      <article class="wo-ex wo-row" data-ex="${ex.key}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-label="${esc(`${exercise.name}, done: ${sub}${pr ? ', personal record' : ''}. Show sets`)}">
+          <span class="wo-row-check" aria-hidden="true">${util.icon('check', 14)}</span>
+          <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
+          ${pr ? '<span class="pr-pill" aria-hidden="true">PR</span>' : ''}
+          <span class="muted" aria-hidden="true">${util.icon('chev-down', 20)}</span>
+        </button>
+      </article>`;
+  }
+
+  function nextRowHtml(ex, prefs) {
+    const exercise = exerciseOf(ex);
+    const left = ex.sets.filter(s => !s.done);
+    const first = left.find(s => s.setType === 'working') || left[0];
+    const w = first?.weightKg ? ` · ${fmtWeight(first.weightKg, prefs)} ${units.label('mass', prefs)}` : '';
+    const sub = first ? `${left.length} × ${first.reps ?? '—'}${w}` : 'No sets yet';
+    return `
+      <article class="wo-ex wo-row" data-ex="${ex.key}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-label="${esc(`${exercise.name}: ${sub}. Start this exercise`)}">
+          <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
+          <span class="muted" aria-hidden="true">${util.icon('chev-right', 20)}</span>
+        </button>
+      </article>`;
+  }
+
+  function focusedHtml(ex, prefs) {
+    const exercise = exerciseOf(ex);
     const last = lastSession(ex.exerciseId);
     const repMin = ex.repMin ?? exercise.repMin;
     const repMax = ex.repMax ?? exercise.repMax;
-    const target = repMin ? ` · Target ${repMin}${repMax && repMax !== repMin ? `–${repMax}` : ''} reps` : '';
+    const rest = exercise.restSec || repo.getSettings().restSec;
+    const sub = [HL.exercises.muscleNames(exercise.primary),
+      repMin ? `Target ${repMin}${repMax && repMax !== repMin ? `–${repMax}` : ''} reps` : '',
+      `Rest ${restLabel(rest)}`].filter(Boolean).join(' · ');
     const ordinals = {};
     let working = 0;
     const rows = ex.sets.map(set => {
       const nth = ordinals[set.setType] = (ordinals[set.setType] ?? -1) + 1;
       if (set.setType === 'working') working++;
       const prev = domain.matchingSet(last?.sets, set.setType, nth);
-      return setRowHtml(set, working, prev, prefs) + (draft.active === set.id ? panelHtml(set, prefs) : '');
+      const active = draft.active === set.id;
+      return setRowHtml(set, working, prev, prefs) + (active && panelOpen ? panelHtml(set, prefs) : '');
     }).join('');
     return `
-      <article class="wo-ex" data-ex="${ex.key}" aria-label="${esc(exercise.name)}">
+      <article class="wo-ex wo-focus" data-ex="${ex.key}" aria-label="${esc(exercise.name)}">
         <header class="wo-ex-hdr">
-          <span class="drag-handle" data-drag aria-hidden="true">⠿</span>
+          <span class="drag-handle" data-drag aria-hidden="true">${util.icon('grip', 20)}</span>
           <div class="grow">
-            <h3 class="wo-ex-name">${esc(exercise.name)}</h3>
-            <p class="wo-ex-sub">${esc(HL.exercises.muscleNames(exercise.primary))}${esc(target)}</p>
+            <h2 class="wo-ex-name">${esc(exercise.name)}</h2>
+            <p class="wo-ex-sub">${esc(sub)}</p>
           </div>
-          <button type="button" class="icon-btn" data-act="ex-menu" aria-label="Options for ${esc(exercise.name)}">⋯</button>
+          <button type="button" class="icon-btn" data-act="ex-menu" aria-label="Options for ${esc(exercise.name)}">${util.icon('dots', 22)}</button>
         </header>
         <p class="wo-last">${last
           ? `Last · ${esc(util.fmtDay(last.dayKey, { month: 'short', day: 'numeric' }))}: ${esc(last.sets.map(s => domain.formatSet(s, prefs)).join(', '))}`
           : 'First time — no history yet'}</p>
         ${ex.notes ? `<p class="wo-notes">📝 ${esc(ex.notes)}</p>` : ''}
+        <div class="set-head" aria-hidden="true"><span>Set</span><span>Previous</span><span>${esc(units.label('mass', prefs))}</span><span>Reps</span><span></span></div>
         <ol class="set-list">${rows}</ol>
-        <button type="button" class="btn btn-dashed btn-block btn-sm" data-act="add-set">+ Add set</button>
+        <button type="button" class="btn btn-dashed btn-block wo-add-set" data-act="add-set">${util.icon('plus', 16)} Add set</button>
       </article>`;
   }
 
   const fmtWeight = (kg, prefs) => units.display('mass', kg, prefs).toLocaleString(undefined, { maximumFractionDigits: 2 });
-
-  function setValHtml(set, prefs) {
-    const w = set.weightKg != null ? `${fmtWeight(set.weightKg, prefs)}<small> ${units.label('mass', prefs)}</small>` : '—';
-    const effort = set.rpe != null ? ` <small>@${set.rpe}</small>` : set.rir != null ? ` <small>${set.rir} RIR</small>` : '';
-    return `${w} × ${set.reps ?? '—'}${effort}`;
-  }
+  const setText = (s, prefs) => `${s.weightKg ? fmtWeight(s.weightKg, prefs) : 'BW'} × ${s.reps ?? '—'}`;
 
   function setRowHtml(set, workingNo, prev, prefs) {
     const [typeName, letter] = SET_TYPES[set.setType];
-    const badge = letter || String(workingNo);
     const label = set.setType === 'working' ? `Set ${workingNo}` : `${typeName} set`;
     const active = draft.active === set.id;
+    const unit = units.label('mass', prefs);
+    const w = set.weightKg != null ? fmtWeight(set.weightKg, prefs) : '';
+    const raw = set.weightKg != null ? units.display('mass', set.weightKg, prefs) : ''; // inputs get a plain number, no thousands separator
+    const prevText = prev ? setText(prev, prefs) : '—';
+    const values = active ? `
+      <input class="set-in" data-field="weight" inputmode="decimal" autocomplete="off" value="${raw}" placeholder="0" aria-label="${esc(`${label} weight (${unit})`)}">
+      <input class="set-in" data-field="reps" inputmode="numeric" autocomplete="off" value="${set.reps ?? ''}" placeholder="0" aria-label="${esc(`${label} reps`)}">` : `
+      <span class="set-cell" data-act="activate" data-cell="weight" aria-hidden="true">${w || '—'}</span>
+      <span class="set-cell" data-act="activate" data-cell="reps" aria-hidden="true">${set.reps ?? '—'}</span>`;
     return `
       <li class="set-row t-${set.setType}${set.done ? ' done' : ''}${active ? ' active' : ''}" data-set="${set.id}">
         <div class="set-swipe">
-          <button type="button" class="set-type" data-act="cycle-type" aria-label="${label}. Change set type">${badge}</button>
-          <button type="button" class="set-main" data-act="activate" aria-expanded="${active}" aria-label="${label}: ${esc(domain.formatSet(set, prefs))}${prev ? `, last time ${esc(domain.formatSet(prev, prefs))}` : ''}. Edit">
-            <span class="set-val">${setValHtml(set, prefs)}</span>
-            ${prev ? `<span class="set-last">last ${esc(domain.formatSet(prev, prefs))}</span>` : ''}
-          </button>
-          <button type="button" class="set-check" data-act="toggle-done" aria-pressed="${set.done}" aria-label="${label} done">✓</button>
+          <button type="button" class="set-type" data-act="cycle-type" aria-label="${label}. Change set type">${letter || workingNo}</button>
+          <button type="button" class="set-prev" data-act="activate"${active ? ` aria-expanded="${panelOpen}"` : ''}
+            aria-label="${esc(active ? `${label} details, previous ${prevText}` : `Edit ${label}: ${w || '—'} ${unit} × ${set.reps ?? '—'}, previous ${prevText}`)}">${esc(prevText)}</button>
+          ${values}
+          <button type="button" class="set-check" data-act="toggle-done" aria-pressed="${set.done}" aria-label="${label} done">${util.icon('check', 18)}</button>
         </div>
         <span class="set-del" aria-hidden="true">Delete</span>
       </li>`;
@@ -289,37 +380,47 @@
         </div>` : ''}
         <fieldset class="seg type-seg">
           <legend class="sr-only">Set type</legend>
-          ${Object.entries(SET_TYPES).map(([k, [name]]) => `<label><input type="radio" name="stype-${set.id}" value="${k}" ${set.setType === k ? 'checked' : ''}><span>${name}</span></label>`).join('')}
+          ${Object.entries(SET_TYPES).map(([k, [name]]) => `<label class="t-${k}"><input type="radio" name="stype-${set.id}" value="${k}" ${set.setType === k ? 'checked' : ''}><span>${name}</span></label>`).join('')}
         </fieldset>
         <div class="panel-actions">
-          <button type="button" class="btn btn-danger btn-sm" data-act="delete-set">Delete</button>
-          <button type="button" class="btn btn-success grow" data-act="toggle-done">${set.done ? 'Undo done' : '✓ Done'}</button>
+          <button type="button" class="btn btn-danger" data-act="delete-set">Delete</button>
+          <button type="button" class="btn btn-success grow" data-act="toggle-done">${set.done ? 'Undo done' : '✓ Done · Start rest'}</button>
         </div>
       </li>`;
   }
 
-  // Re-render one exercise card, keeping focus on the same control
-  function renderCard(key) {
-    const old = viewEl?.querySelector(`[data-ex="${key}"]`);
-    const ex = findEx(key);
-    if (!old || !ex) { render(); return; }
+  // Re-render the exercise list, keeping focus on the same control (or the next set's ✓)
+  function renderBody() {
+    const list = viewEl?.querySelector('.wo-list');
+    if (!list) { render(); return; }
     const a = document.activeElement;
     let focusSel = null;
-    if (a && old.contains(a)) {
-      const holder = a.closest('[data-set], [data-panel]');
+    if (a && list.contains(a)) {
+      const holder = a.closest('[data-set], [data-panel], [data-ex]');
       const id = holder?.dataset.set || holder?.dataset.panel;
-      if (a.dataset.act) focusSel = `${id ? `[data-set="${id}"] ` : ''}[data-act="${a.dataset.act}"]`;
+      if (a.dataset.act || a.dataset.field) {
+        focusSel = `${id ? `[data-set="${id}"] ` : holder?.dataset.ex ? `[data-ex="${holder.dataset.ex}"] ` : ''}${a.dataset.act ? `[data-act="${a.dataset.act}"]` : `[data-field="${a.dataset.field}"]`}`;
+      }
     }
-    old.outerHTML = cardHtml(ex, repo.getSettings().units);
+    list.innerHTML = bodyHtml();
     updateProgress();
-    if (focusSel) viewEl.querySelector(focusSel)?.focus({ preventScroll: true });
+    if (!focusSel) return;
+    const target = list.querySelector(focusSel) || (draft.active && list.querySelector(`[data-set="${draft.active}"] [data-act="toggle-done"]`));
+    target?.focus({ preventScroll: true });
   }
 
   function updateProgress() {
     const el = viewEl?.querySelector('[data-progress]');
     if (!el) return;
     const all = draft.exercises.flatMap(e => e.sets);
-    el.textContent = `${all.filter(s => s.done).length}/${all.length} sets`;
+    const doneN = all.filter(s => s.done).length;
+    const focus = focusedEx();
+    const pct = all.length ? Math.round((doneN / all.length) * 100) : 0;
+    el.textContent = draft.exercises.length
+      ? `Exercise ${draft.exercises.indexOf(focus) + 1} of ${draft.exercises.length} · ${doneN} of ${all.length} sets`
+      : 'No exercises yet';
+    viewEl.querySelector('[data-progress-pct]').textContent = `${pct}%`;
+    viewEl.querySelector('[data-progress-fill]').style.width = `${pct}%`;
   }
 
   function tickElapsed() {
@@ -334,14 +435,12 @@
   // Update one set's numbers in place (no re-render, so typing isn't interrupted)
   function refreshSet(set, skipInput) {
     const prefs = repo.getSettings().units;
-    const row = viewEl.querySelector(`[data-set="${set.id}"]`);
-    if (row) row.querySelector('.set-val').innerHTML = setValHtml(set, prefs);
-    const panel = viewEl.querySelector(`[data-panel="${set.id}"]`);
-    if (!panel) return;
-    const wIn = panel.querySelector('input[data-field="weight"]');
-    const rIn = panel.querySelector('input[data-field="reps"]');
-    if (wIn !== skipInput) wIn.value = set.weightKg != null ? units.display('mass', set.weightKg, prefs) : '';
-    if (rIn !== skipInput) rIn.value = set.reps ?? '';
+    const w = set.weightKg != null ? fmtWeight(set.weightKg, prefs) : '';
+    const raw = set.weightKg != null ? units.display('mass', set.weightKg, prefs) : '';
+    for (const el of util.$$(`[data-set="${set.id}"] [data-field], [data-panel="${set.id}"] [data-field]`, viewEl)) {
+      if (el !== skipInput) el.value = el.dataset.field === 'weight' ? raw : (set.reps ?? '');
+    }
+    for (const el of util.$$(`[data-set="${set.id}"] [data-cell]`, viewEl)) el.textContent = (el.dataset.cell === 'weight' ? w : set.reps) || '—';
   }
 
   /* ════════════════════════════════════
@@ -360,17 +459,18 @@
       Object.assign(set, { done: false, completedAt: null });
       draft.active = setId;
       saveDraft();
-      renderCard(ex.key);
+      renderBody();
       return;
     }
     if (!(set.reps > 0)) {
       draft.active = setId;
       saveDraft();
-      renderCard(ex.key);
-      viewEl.querySelector(`[data-panel="${setId}"] input[data-field="reps"]`)?.focus();
+      renderBody();
+      viewEl.querySelector(`[data-set="${setId}"] input[data-field="reps"]`)?.focus();
       HL.toast('Enter the reps for this set first', { kind: 'error' });
       return;
     }
+    const focusBefore = focusedEx();
     const exercise = repo.get('exercises', ex.exerciseId);
     const restSec = exercise?.restSec || repo.getSettings().restSec;
     let bests = domain.personalBests(history(ex.exerciseId));
@@ -378,24 +478,44 @@
 
     Object.assign(set, { done: true, completedAt: util.localISO(), restSec });
     const prs = domain.setPRs(bests, set);
-    const next = nextUndone(setId);
-    draft.active = next;
+    draft.active = nextUndone(setId);
+    panelOpen = false;
     saveDraft();
     HL.rest.start(restSec);
-    renderCard(ex.key);
-    const nextEx = next && findSet(next).ex;
-    if (nextEx && nextEx.key !== ex.key) renderCard(nextEx.key);
+    renderBody();
+    // Finished this exercise: bring the next one into view
+    if (focusedEx() !== focusBefore) {
+      const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      viewEl.querySelector('.wo-focus')?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+    }
     if (prs.length) HL.toast(`🏆 ${prs.map(p => PR_LABEL[p]).join(' + ')} — ${exercise.name} ${domain.formatSet(set, repo.getSettings().units)}`, { duration: 4500 });
   }
 
+  // First tap makes a set active (editable inline); tapping its PREVIOUS cell again opens the detail panel
   function activate(setId) {
-    const found = findSet(setId);
-    if (!found) return;
-    const prev = draft.active && findSet(draft.active);
-    draft.active = draft.active === setId ? null : setId;
+    if (!findSet(setId)) return;
+    if (draft.active === setId) {
+      panelOpen = !panelOpen;
+    } else {
+      draft.active = setId;
+      panelOpen = false;
+      saveDraft();
+    }
+    focusOverride = null;
+    renderBody();
+  }
+
+  // Tapping a collapsed exercise row brings it into focus
+  function focusExercise(key) {
+    const ex = findEx(key);
+    if (!ex) return;
+    draft.active = (ex.sets.find(s => !s.done) || ex.sets[0])?.id || null;
+    focusOverride = key;
+    panelOpen = false;
     saveDraft();
-    renderCard(found.ex.key);
-    if (prev && prev.ex.key !== found.ex.key) renderCard(prev.ex.key);
+    renderBody();
+    viewEl.querySelector('.wo-focus [data-act="toggle-done"]')?.focus({ preventScroll: true });
+    viewEl.querySelector('.wo-focus')?.scrollIntoView({ block: 'nearest' });
   }
 
   function step(setId, field, dir) {
@@ -423,7 +543,7 @@
     ex.sets.push(set);
     draft.active = set.id;
     saveDraft();
-    renderCard(key);
+    renderBody();
   }
 
   function deleteSet(setId) {
@@ -433,13 +553,13 @@
     ex.sets.splice(index, 1);
     if (draft.active === setId) draft.active = null;
     saveDraft();
-    renderCard(ex.key);
+    renderBody();
     HL.undoToast('Set deleted', () => {
       const target = draft && findEx(ex.key);
       if (!target) return;
       target.sets.splice(index, 0, set);
       saveDraft();
-      renderCard(ex.key);
+      renderBody();
     });
   }
 
@@ -447,7 +567,7 @@
     const { ex, set } = findSet(setId);
     set.setType = TYPE_CYCLE[(TYPE_CYCLE.indexOf(set.setType) + 1) % TYPE_CYCLE.length];
     saveDraft();
-    renderCard(ex.key);
+    renderBody();
   }
 
   function setEffort(setId, value) {
@@ -504,13 +624,13 @@
     const i = draft.exercises.indexOf(ex);
     const exercise = repo.get('exercises', ex.exerciseId);
     HL.sheet.open({
-      title: exercise?.name || 'Exercise', icon: '🏋️',
+      title: exercise?.name || 'Exercise', icon: util.icon('workout', 20),
       body: `
         <div class="menu-list">
-          <button type="button" class="menu-item" data-m="up" ${i === 0 ? 'disabled' : ''}>↑ Move up</button>
-          <button type="button" class="menu-item" data-m="down" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>↓ Move down</button>
-          <button type="button" class="menu-item" data-m="settings">⚙ Rest time, rep target &amp; muscles</button>
-          <button type="button" class="menu-item danger" data-m="remove">✕ Remove from workout</button>
+          <button type="button" class="menu-item" data-m="up" ${i === 0 ? 'disabled' : ''}>${util.icon('arrow-up', 18)} Move up</button>
+          <button type="button" class="menu-item" data-m="down" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>${util.icon('arrow-down', 18)} Move down</button>
+          <button type="button" class="menu-item" data-m="settings">${util.icon('pencil', 18)} Rest time, rep target &amp; muscles</button>
+          <button type="button" class="menu-item danger" data-m="remove">${util.icon('close', 18)} Remove from workout</button>
         </div>
         <div class="field block-top">
           <label class="field-label" for="ex-notes">Notes for this workout</label>
@@ -530,7 +650,7 @@
         ex.notes = form.elements.notes.value.trim();
         saveDraft();
         api.close();
-        renderCard(key);
+        renderBody();
       },
     });
   }
@@ -541,6 +661,8 @@
     const card = handle.closest('.wo-ex');
     e.preventDefault();
     try { handle.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+    // The view groups exercises (done / focused / up next); reorder in true workout order
+    for (const ex of draft.exercises) list.appendChild(list.querySelector(`[data-ex="${ex.key}"]`));
     list.classList.add('reordering');
     card.classList.add('dragging');
     const move = ev => {
@@ -611,7 +733,7 @@
         const detail = p.type === 'volume' ? units.format('mass', p.value, prefs, 0)
           : p.type === 'e1rm' ? `${domain.formatSet(p.set, prefs)} (est. ${units.format('mass', domain.e1rm(p.set.weightKg, p.set.reps), prefs, 0)})`
           : domain.formatSet(p.set, prefs);
-        prs.push(`<li>🏆 <b>${esc(name)}</b> — ${PR_LABEL[p.type]}: ${esc(detail)}</li>`);
+        prs.push(`<li class="pr-row">${util.icon('trophy', 18)}<span><b>${esc(name)}</b> — ${PR_LABEL[p.type]}: ${esc(detail)}</span></li>`);
       }
     }
     const body = `
@@ -624,7 +746,7 @@
       ${prs.length ? `<h3 class="section-label section-gap">Personal records</h3><ul class="pr-list">${prs.join('')}</ul>` : ''}
       ${unticked.length ? `
         <div class="notice" role="note">
-          <p>⚠ ${unticked.length} set${unticked.length === 1 ? ' isn’t' : 's aren’t'} ticked off and won’t be saved.</p>
+          <p>${util.icon('alert', 18)}<span>${unticked.length} set${unticked.length === 1 ? ' isn’t' : 's aren’t'} ticked off and won’t be saved.</span></p>
           <button type="button" class="btn btn-ghost btn-sm" data-act="tick-all">Tick ${unticked.length === 1 ? 'it' : 'them all'} done</button>
         </div>` : ''}
       <div class="field"><label class="field-label" for="wo-name">Name</label>
@@ -634,7 +756,7 @@
       <p class="field-hint" id="fin-err" role="alert"></p>`;
 
     HL.sheet.open({
-      title: editing ? 'Save changes?' : 'Finish workout?', icon: '🏁', body,
+      title: editing ? 'Save changes?' : 'Finish workout?', icon: util.icon('flag', 20), body,
       footer: `<button type="button" class="btn btn-ghost" data-act="keep">${editing ? 'Back' : 'Keep going'}</button>
         <button type="submit" class="btn btn-success">${editing ? 'Save changes' : 'Save workout'}</button>`,
       onMount: api => api.form.addEventListener('click', e => {
@@ -715,7 +837,7 @@
 
   function rename() {
     HL.sheet.open({
-      title: 'Rename workout', icon: '✎',
+      title: 'Rename workout', icon: util.icon('pencil', 20),
       body: `<div class="field"><label class="field-label" for="rn">Name</label><input class="input" id="rn" name="name" value="${esc(draft.name)}" autofocus></div>`,
       footer: '<button type="submit" class="btn btn-primary">Save</button>',
       onSubmit: (form, api) => {
@@ -736,9 +858,9 @@
       <li class="tpl-slot" data-i="${i}">
         <div class="tpl-slot-top">
           <span class="grow tpl-slot-name">${esc(repo.get('exercises', s.exerciseId)?.name || 'Unknown')}</span>
-          <button type="button" class="icon-btn" data-t="up" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
-          <button type="button" class="icon-btn" data-t="down" ${i === state.exercises.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
-          <button type="button" class="icon-btn" data-t="remove" aria-label="Remove">✕</button>
+          <button type="button" class="icon-btn" data-t="up" ${i === 0 ? 'disabled' : ''} aria-label="Move up">${util.icon('arrow-up', 18)}</button>
+          <button type="button" class="icon-btn" data-t="down" ${i === state.exercises.length - 1 ? 'disabled' : ''} aria-label="Move down">${util.icon('arrow-down', 18)}</button>
+          <button type="button" class="icon-btn" data-t="remove" aria-label="Remove">${util.icon('close', 18)}</button>
         </div>
         <div class="tpl-slot-row">
           <span class="panel-lbl">Sets</span>
@@ -757,7 +879,7 @@
       <div class="field"><label class="field-label" for="tpl-name">Name</label>
         <input class="input" id="tpl-name" name="name" value="${esc(state.name)}" placeholder="e.g. Upper A"></div>
       <fieldset class="field"><legend class="field-label">Color</legend>
-        <div class="seg color-seg">${COLORS.map(c => `<label><input type="radio" name="color" value="${c}" ${state.color === c ? 'checked' : ''}><span class="swatch c-${c}">${c[0].toUpperCase() + c.slice(1)}</span></label>`).join('')}</div>
+        <div class="seg color-seg">${COLORS.map(c => `<label><input type="radio" name="color" value="${c}" ${state.color === c ? 'checked' : ''}><span class="swatch c-${c}">${COLOR_NAME[c]}</span></label>`).join('')}</div>
       </fieldset>
       <h3 class="section-label section-gap">Exercises</h3>
       <ol class="tpl-slots" id="tpl-slots">${listHtml()}</ol>
@@ -766,7 +888,7 @@
       <p class="field-hint" id="tpl-err" role="alert"></p>`;
 
     HL.sheet.open({
-      title: template ? 'Edit template' : 'New template', icon: '📋', body,
+      title: template ? 'Edit template' : 'New template', icon: util.icon('workout', 20), body,
       footer: '<button type="submit" class="btn btn-primary">Save template</button>',
       onMount: api => {
         const slots = api.form.querySelector('#tpl-slots');
@@ -825,6 +947,8 @@
     const setId = holder?.dataset.set || holder?.dataset.panel;
     const template = el.dataset.id && repo.get('templates', el.dataset.id);
     switch (act) {
+      case 'back':            HL.app.show('today'); break;
+      case 'focus-ex':        focusExercise(key); break;
       case 'start-empty':     startEmpty(); break;
       case 'repeat-last':     repeatLast(); break;
       case 'start-template':  startTemplate(template); break;
@@ -847,9 +971,9 @@
 
   function onInput(e) {
     const field = e.target.dataset.field;
-    const panel = e.target.closest('[data-panel]');
-    if (!field || !panel) return;
-    const { set } = findSet(panel.dataset.panel);
+    const holder = e.target.closest('[data-set], [data-panel]');
+    if (!field || !holder) return;
+    const { set } = findSet(holder.dataset.set || holder.dataset.panel);
     const n = util.parseNum(e.target.value);
     if (field === 'weight') set.weightKg = n == null ? null : units.toCanonical('mass', Math.max(0, n), units.unitFor('mass', repo.getSettings().units));
     else set.reps = n == null ? null : Math.max(0, Math.round(n));
@@ -862,7 +986,7 @@
     const { ex, set } = findSet(e.target.name.slice(6));
     set.setType = e.target.value;
     saveDraft();
-    renderCard(ex.key);
+    renderBody();
   }
 
   function init() {
@@ -881,8 +1005,19 @@
 
   HL.views = HL.views || {};
   HL.views.workout = { stores: ['exercises', 'templates', 'entries'], render, onClick, onInput, onChange, init };
+  // Starting from another tab (Today's "Up next" card): never replaces a workout in progress
+  const startFrom = fn => (...args) => {
+    loadDraft();
+    if (!draft) fn(...args);
+    HL.app.show('workout');
+  };
+
   HL.workout = {
     editEntry,
     current: () => { loadDraft(); return draft; },
+    nextTemplate: () => nextTemplate(),
+    start: startFrom(templateId => { const t = repo.get('templates', templateId); if (t) startTemplate(t); }),
+    startEmpty: startFrom(startEmpty),
+    repeatLast: startFrom(repeatLast),
   };
 })(globalThis.HL = globalThis.HL || {});

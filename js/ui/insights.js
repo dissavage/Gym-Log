@@ -26,7 +26,7 @@
   function render(el) {
     HL.charts.destroyIn(el);
     const entries = repo.entries();
-    const header = '<header class="page-head"><div><h1 class="page-title">Insights</h1><p class="page-sub">Are you progressing?</p></div></header>';
+    const header = '<header class="page-head"><div><p class="page-kicker">Are you progressing?</p><h1 class="page-title">Insights</h1></div></header>';
     if (!entries.length) {
       el.innerHTML = `${header}<div class="empty-state"><span class="empty-icon" aria-hidden="true">📈</span><strong>Nothing to chart yet</strong>
         Log workouts, weigh-ins or anything else for a few days and your trends, PRs and streaks will appear here.</div>`;
@@ -128,9 +128,9 @@
           <button type="button" class="link-btn" data-act="targets">Targets</button>
         </div>
         <div class="week-nav">
-          <button type="button" class="icon-btn" data-act="week-prev" aria-label="Previous week">‹</button>
+          <button type="button" class="icon-btn" data-act="week-prev" aria-label="Previous week">${util.icon('chev-left', 20)}</button>
           <span class="week-lbl">${esc(label)}</span>
-          <button type="button" class="icon-btn" data-act="week-next" aria-label="Next week" ${weekOffset >= 0 ? 'disabled' : ''}>›</button>
+          <button type="button" class="icon-btn" data-act="week-next" aria-label="Next week" ${weekOffset >= 0 ? 'disabled' : ''}>${util.icon('chev-right', 20)}</button>
         </div>
         <ul class="vol-list">${rows}</ul>
         <p class="field-hint">Working and failure sets count; warm-ups and drop sets don't. Secondary muscles count as half a set. Shaded band = your target range.</p>
@@ -155,12 +155,22 @@
         <div class="card-hdr"><h2 class="section-label" id="exs-h">Exercises</h2></div>
         <ul class="log-list">${items.map(({ id, sessions, ex }) => {
           const b = domain.personalBests(sessions);
-          const best = b.e1rm ? `Est. 1RM ${units.format('mass', b.e1rm, p, 0)}` : `Best ${Math.max(...b.pairs.map(x => x[1]))} reps`;
+          // Latest session's best est. 1RM against the last session at least 4 weeks before it
+          const latest = sessions.at(-1);
+          const then = sessions.findLast(s => s.dayKey <= util.addDays(latest.dayKey, -28));
+          const [prev, last] = then ? domain.exerciseProgress([then, latest]).map(x => x.e1rm) : [];
+          const diff = prev && last ? units.display('mass', last, p) - units.display('mass', prev, p) : 0;
+          const delta = Math.abs(diff) >= 0.5
+            ? `<span class="ex-delta${diff > 0 ? ' up' : ''}"><span aria-hidden="true">${diff > 0 ? '▲' : '▼'}</span> ${diff > 0 ? '+' : '−'}${util.fmtNum(Math.abs(diff), 0)} in 4 wk</span>` : '';
+          const big = b.e1rm
+            ? `<span class="ex-big">${esc(util.fmtNum(units.display('mass', b.e1rm, p), 0))}<small>${esc(units.label('mass', p))}</small></span>`
+            : `<span class="ex-big">${Math.max(...b.pairs.map(x => x[1]))}<small>reps</small></span>`;
           return `
-            <li><button type="button" class="log-row" data-exercise="${id}">
+            <li><button type="button" class="log-row ex-row" data-exercise="${id}">
               <span class="log-main"><span class="log-name">${esc(ex.name)}</span>
-                <span class="log-sum">${esc(best)} · ${sessions.length} session${sessions.length === 1 ? '' : 's'}</span></span>
-              <span class="log-time">${esc(shortDay(sessions.at(-1).dayKey))} ›</span>
+                <span class="log-sum">${b.e1rm ? 'Est. 1RM' : 'Best reps'} · ${sessions.length} session${sessions.length === 1 ? '' : 's'} · ${esc(shortDay(sessions.at(-1).dayKey))}</span></span>
+              <span class="ex-stat">${big}${delta}</span>
+              ${util.icon('chev-right', 18)}
             </button></li>`;
         }).join('')}</ul>
       </section>`;
@@ -195,9 +205,9 @@
       <section class="card" aria-labelledby="bw-h">
         <div class="card-hdr"><h2 class="section-label" id="bw-h">Bodyweight</h2></div>
         <div class="stat-grid">
-          <div class="stat"><span class="stat-lbl">7-day average</span><span class="stat-val">${esc(fmt(last.avg))}</span></div>
+          <div class="stat"><span class="stat-lbl">7-day average</span><span class="stat-val">${util.fmtNum(units.display('mass', last.avg, p), 1)} <small>${unit}</small></span></div>
           <div class="stat"><span class="stat-lbl">Change (${esc(RANGES.find(r => r[0] === range)[1])})</span>
-            <span class="stat-val">${change > 0 ? '▲ +' : change < 0 ? '▼ −' : ''}${util.fmtNum(Math.abs(change), 1)} <small>${unit}</small></span></div>
+            <span class="stat-val">${change ? `<small aria-hidden="true">${change > 0 ? '▲' : '▼'}</small> ` : ''}${change > 0 ? '+' : change < 0 ? '−' : ''}${util.fmtNum(Math.abs(change), 1)} <small>${unit}</small></span></div>
         </div>
         <div class="chart-box" data-chart="bodyweight" role="img" aria-label="Bodyweight chart: 7-day average went from ${esc(fmt(first.avg))} on ${esc(shortDay(first.dayKey))} to ${esc(fmt(last.avg))} on ${esc(shortDay(last.dayKey))}.">
           <canvas></canvas><p class="chart-msg"></p>
@@ -210,7 +220,7 @@
   }
 
   const bodyweightLegend = () => [
-    { label: 'Daily weigh-in', color: HL.charts.token('--muted'), dots: true },
+    { label: 'Daily weigh-in', color: HL.charts.token('--faint'), dots: true },
     { label: '7-day average', color: HL.charts.token('--chart-1') },
   ];
 
@@ -368,7 +378,7 @@
         : '<p class="muted small block-gap">No sessions in this range — change the range on the Insights tab.</p>'}
       <h3 class="section-label section-gap block-top">PR log</h3>
       ${log.length ? `<ul class="pr-list">${log.map(g => `
-        <li><span class="pr-day">🏆 ${esc(shortDay(g.dayKey))}</span>
+        <li><span class="pr-day">${util.icon('trophy', 16)} ${esc(shortDay(g.dayKey))}</span>
           ${g.prs.map(pr => `<span class="pr-item"><b>${PR_LABEL[pr.type]}</b> ${esc(prText(pr))}</span>`).join('')}</li>`).join('')}</ul>`
         : '<p class="muted small block-gap">No PRs yet — your first session is the baseline. Beat it next time.</p>'}
       <h3 class="section-label section-gap">Recent sessions</h3>
@@ -378,7 +388,7 @@
 
     let sheetEl = null;
     HL.sheet.open({
-      title: ex.name, icon: '🏋️', body,
+      title: ex.name, icon: util.icon('workout', 20), body,
       onMount: api => {
         sheetEl = api.el;
         const box = api.body.querySelector('[data-chart="exercise"]');
@@ -415,7 +425,7 @@
       }).join('')}
       <p class="field-hint" id="tg-err" role="alert"></p>`;
     HL.sheet.open({
-      title: 'Weekly set targets', icon: '🎯', body,
+      title: 'Weekly set targets', icon: util.icon('target', 20), body,
       footer: '<button type="submit" class="btn btn-primary">Save targets</button>',
       onSubmit: (form, api) => {
         const next = {};

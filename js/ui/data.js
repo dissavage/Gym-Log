@@ -48,11 +48,11 @@
     const trackers = repo.trackers({ archived: true }).filter(t => repo.entries({ type: t.key }).length);
     if (!trackers.length) { HL.toast('Nothing to export yet', { kind: 'info' }); return; }
     HL.sheet.open({
-      title: 'Export CSV', icon: '📄',
+      title: 'Export CSV', icon: util.icon('file', 20),
       body: `
         <p class="field-hint block-gap">One spreadsheet per tracker, in your display units. Workouts export one row per set.</p>
         <div class="menu-list">${trackers.map(t => `
-          <button type="button" class="menu-item" data-csv="${esc(t.key)}"><span aria-hidden="true">${t.icon}</span> ${esc(t.name)}
+          <button type="button" class="menu-item" data-csv="${esc(t.key)}">${util.trackerIcon(t, 18)} ${esc(t.name)}
             <span class="muted small">· ${repo.entries({ type: t.key }).length} logs</span></button>`).join('')}</div>`,
       onMount: api => api.form.addEventListener('click', async e => {
         const btn = e.target.closest('[data-csv]');
@@ -113,7 +113,7 @@
       ${v.skippedInvalid ? `<p class="field-hint">${v.skippedInvalid} damaged record${v.skippedInvalid === 1 ? '' : 's'} in the file will be ignored.</p>` : ''}
       ${v.settings && !nothing ? '<label class="check-inline"><input type="checkbox" name="withSettings" checked> Also restore settings (units, rest timer, targets)</label>' : ''}`;
     HL.sheet.open({
-      title: 'Import backup', icon: '📥', body,
+      title: 'Import backup', icon: util.icon('upload', 20), body,
       footer: nothing ? '<button type="submit" class="btn btn-ghost">Close</button>'
         : `<button type="button" class="btn btn-ghost" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary">Import</button>`,
       onMount: api => api.form.addEventListener('click', e => { if (e.target.closest('[data-act="cancel"]')) api.close(); }),
@@ -168,7 +168,7 @@
 
   function openWipe() {
     HL.sheet.open({
-      title: 'Delete all data', icon: '⚠',
+      title: 'Delete all data', icon: util.icon('alert', 20),
       body: `
         <p class="block-gap">This permanently deletes every log, tracker, exercise, template and setting in Health Log on this device. It can’t be undone.</p>
         <p class="block-gap"><b>Export a backup first</b> if you might want any of it back. Your old Gym Tracker app isn’t touched.</p>
@@ -204,16 +204,16 @@
         <div class="settings-card">
           <button type="button" class="settings-row settings-link" data-act="export">
             <span><span class="settings-lbl">Back up everything</span><span class="settings-sub">${last ? `Last backup ${esc(new Date(last).toLocaleDateString())}` : 'No backup yet'} · JSON file</span></span>
-            <span aria-hidden="true" class="muted">⬆︎</span></button>
+            <span class="row-ico" aria-hidden="true">${util.icon('upload', 18)}</span></button>
           <button type="button" class="settings-row settings-link" data-act="import">
             <span><span class="settings-lbl">Restore from backup</span><span class="settings-sub">Shows what will be added before importing</span></span>
-            <span aria-hidden="true" class="muted">⬇︎</span></button>
+            <span class="row-ico" aria-hidden="true">${util.icon('download', 18)}</span></button>
           <button type="button" class="settings-row settings-link" data-act="csv">
             <span><span class="settings-lbl">Export CSV</span><span class="settings-sub">Per tracker, for spreadsheets</span></span>
-            <span aria-hidden="true" class="muted">›</span></button>
+            <span class="row-ico" aria-hidden="true">${util.icon('chev-right', 18)}</span></button>
           <button type="button" class="settings-row settings-link" data-act="legacy">
             <span><span class="settings-lbl">Import from old Gym Tracker</span><span class="settings-sub">Workouts, bodyweight, macros and splits</span></span>
-            <span aria-hidden="true" class="muted">›</span></button>
+            <span class="row-ico" aria-hidden="true">${util.icon('chev-right', 18)}</span></button>
         </div>
       </section>
       <section class="settings-section" aria-labelledby="stor-h">
@@ -227,7 +227,7 @@
       </section>
       ${demoHtml()}
       <section class="settings-section" aria-labelledby="danger-h">
-        <h2 class="section-label" id="danger-h">Danger zone</h2>
+        <h2 class="section-label danger-label" id="danger-h">Danger zone</h2>
         <button type="button" class="btn btn-danger btn-block" data-act="wipe">Delete all data…</button>
       </section>
       <p class="field-hint about">Health Log · data schema v${schema.SCHEMA_VERSION} · everything stays on this device</p>`;
@@ -248,10 +248,10 @@
           ${n ? `
           <button type="button" class="settings-row settings-link" data-act="demo-remove">
             <span><span class="settings-lbl">Remove demo data</span><span class="settings-sub">${n.toLocaleString()} sample logs — your own logs stay</span></span>
-            <span aria-hidden="true" class="muted">✕</span></button>` : `
+            <span class="row-ico" aria-hidden="true">${util.icon('close', 18)}</span></button>` : `
           <button type="button" class="settings-row settings-link" data-act="demo-load">
             <span><span class="settings-lbl">Load demo data</span><span class="settings-sub">6 months of sample logs to explore the charts</span></span>
-            <span aria-hidden="true" class="muted">›</span></button>`}
+            <span class="row-ico" aria-hidden="true">${util.icon('chev-right', 18)}</span></button>`}
         </div>
       </section>`;
   }
@@ -259,10 +259,10 @@
   function openLoadDemo() {
     const real = repo.entries().filter(e => !HL.demo.isDemo(e)).length;
     HL.sheet.open({
-      title: 'Load demo data', icon: '🧪',
+      title: 'Load demo data', icon: util.icon('flask', 20),
       body: `
         <p class="block-gap">Adds about 6 months of made-up workouts, weigh-ins, meals, sleep and more — each one marked as demo — so you can see how the charts and PRs look with real history.</p>
-        ${real ? `<p class="notice">⚠ You already have ${real.toLocaleString()} log${real === 1 ? '' : 's'} of your own. Demo logs will mix into your charts until you remove them (More → Remove demo data). Your own logs are never touched.</p>` : ''}`,
+        ${real ? `<p class="notice">${util.icon('alert', 18)}<span>You already have ${real.toLocaleString()} log${real === 1 ? '' : 's'} of your own. Demo logs will mix into your charts until you remove them (More → Remove demo data). Your own logs are never touched.</span></p>` : ''}`,
       footer: '<button type="button" class="btn btn-ghost" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary">Load demo data</button>',
       onMount: api => api.form.addEventListener('click', e => { if (e.target.closest('[data-act="cancel"]')) api.close(); }),
       onSubmit: async (form, api) => {
@@ -323,7 +323,7 @@
         <span aria-hidden="true">💾</span>
         <span class="grow">${last ? `It’s been ${days} days since your last backup.` : 'You haven’t backed up yet.'} Save a copy somewhere safe (Files, iCloud Drive, email).</span>
         <span class="nudge-acts">
-          <button type="button" class="btn btn-primary btn-sm" data-act="export">Back up</button>
+          <button type="button" class="link-btn" data-act="export">Back up</button>
           <button type="button" class="link-btn" data-act="snooze-backup">Later</button>
         </span>
       </div>`;

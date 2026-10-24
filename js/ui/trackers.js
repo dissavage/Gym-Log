@@ -35,11 +35,11 @@
         return `
           <div class="settings-row tracker-row${t.archived ? ' is-archived' : ''}">
             <button type="button" class="tracker-main" data-tr="edit" data-id="${t.id}" aria-label="Edit ${esc(t.name)}">
-              <span class="tracker-icon" aria-hidden="true">${t.icon}</span>
+              <span class="icon-sq" aria-hidden="true">${util.trackerIcon(t, 20)}</span>
               <span><span class="settings-lbl">${esc(t.name)}</span><span class="settings-sub">${esc(sub)}</span></span>
             </button>
-            <button type="button" class="icon-btn" data-tr="up" data-id="${t.id}" aria-label="Move ${esc(t.name)} up" ${i === 0 ? 'disabled' : ''}>↑</button>
-            <button type="button" class="icon-btn" data-tr="down" data-id="${t.id}" aria-label="Move ${esc(t.name)} down" ${i === all.length - 1 ? 'disabled' : ''}>↓</button>
+            <button type="button" class="icon-btn" data-tr="up" data-id="${t.id}" aria-label="Move ${esc(t.name)} up" ${i === 0 ? 'disabled' : ''}>${util.icon('arrow-up', 18)}</button>
+            <button type="button" class="icon-btn" data-tr="down" data-id="${t.id}" aria-label="Move ${esc(t.name)} down" ${i === all.length - 1 ? 'disabled' : ''}>${util.icon('arrow-down', 18)}</button>
           </div>`;
       }).join('')}</div>
       <button type="button" class="btn btn-dashed btn-block block-top" data-tr="new">+ New tracker</button>`;
@@ -87,11 +87,11 @@
         <div class="bf-top">
           <label class="sr-only" for="bf-label-${i}">Field name</label>
           <input class="input" id="bf-label-${i}" data-f="label" value="${esc(f.label)}" placeholder="Field name, e.g. Steps" autocapitalize="sentences">
-          <button type="button" class="icon-btn" data-b="up" aria-label="Move field up" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" class="icon-btn" data-b="down" aria-label="Move field down" ${i === count - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="icon-btn" data-b="up" aria-label="Move field up" ${i === 0 ? 'disabled' : ''}>${util.icon('arrow-up', 18)}</button>
+          <button type="button" class="icon-btn" data-b="down" aria-label="Move field down" ${i === count - 1 ? 'disabled' : ''}>${util.icon('arrow-down', 18)}</button>
           ${locked
             ? `<button type="button" class="btn btn-ghost btn-sm" data-b="${f.hidden ? 'show' : 'hide'}" aria-label="${f.hidden ? 'Show' : 'Hide'} ${esc(f.label)}">${f.hidden ? 'Show' : 'Hide'}</button>`
-            : `<button type="button" class="icon-btn" data-b="remove" aria-label="Remove ${esc(f.label || 'field')}">✕</button>`}
+            : `<button type="button" class="icon-btn" data-b="remove" aria-label="Remove ${esc(f.label || 'field')}">${util.icon('close', 18)}</button>`}
         </div>
         ${f.hidden ? '<p class="field-hint">Hidden — its past data is kept but it’s not on the form.</p>' : `
         <div class="row-gap">
@@ -135,6 +135,8 @@
       name: '', icon: ICONS[0], kind: 'entry', builtIn: false, archived: false,
       fields: [newField('number')], quick: { prefill: 'last', presets: true },
     };
+    const canDelete = tracker && !hasEntries(tracker.key);
+    const danger = tracker ? `<button type="button" class="btn btn-danger btn-block block-top" data-b="${canDelete ? 'delete' : 'archive'}">${canDelete ? 'Delete this tracker' : tracker.archived ? 'Show on Today' : 'Hide from Today'}</button>` : '';
     const qc = tracker && domain.quickChips(tracker, prefs);
     let chipsText = qc ? qc.values.join(', ') : '';
 
@@ -158,13 +160,12 @@
         <p class="field-hint">One-tap amounts for the first number field, separated by commas.</p></div>
       <label class="check-inline"><input type="checkbox" name="prefill" ${state.quick?.prefill === 'last' ? 'checked' : ''}> Pre-fill with my last entry</label>
       <label class="check-inline"><input type="checkbox" name="onToday" ${state.archived ? '' : 'checked'}> Show on Today</label>
+      ${danger}
       <p class="field-hint" id="tb-err" role="alert"></p>`;
 
-    const canDelete = tracker && !hasEntries(tracker.key);
     HL.sheet.open({
-      title: tracker ? `Edit ${tracker.name}` : 'New tracker', icon: tracker?.icon || '✨', body,
-      footer: `${tracker ? `<button type="button" class="btn btn-danger" data-b="${canDelete ? 'delete' : 'archive'}">${canDelete ? 'Delete' : tracker.archived ? 'Show on Today' : 'Hide from Today'}</button>` : ''}
-        <button type="submit" class="btn btn-primary">${tracker ? 'Save' : 'Create tracker'}</button>`,
+      title: tracker ? `Edit ${tracker.name}` : 'New tracker', icon: tracker ? util.trackerIcon(tracker, 20) : util.icon('plus', 20), body,
+      footer: `<button type="submit" class="btn btn-primary">${tracker ? 'Save' : 'Create tracker'}</button>`,
       onMount: api => {
         const list = api.form.querySelector('#bf-list');
         const refresh = () => { list.innerHTML = listHtml(); };
@@ -301,7 +302,7 @@
       <p class="field-hint">Built-in fields are fixed so your history stays consistent. Set daily goals from Today → Edit goals, or create a custom tracker for anything else.</p>
       <p class="field-hint" id="tb-err" role="alert"></p>`;
     HL.sheet.open({
-      title: `Edit ${t.name}`, icon: t.icon, body,
+      title: `Edit ${t.name}`, icon: util.trackerIcon(t, 20), body,
       footer: '<button type="submit" class="btn btn-primary">Save</button>',
       onSubmit: (form, api) => {
         const name = form.elements.name.value.trim();
@@ -313,5 +314,5 @@
     });
   }
 
-  HL.trackers = { listHtml, onClick };
+  HL.trackers = { listHtml, onClick, openBuilder };
 })(globalThis.HL = globalThis.HL || {});

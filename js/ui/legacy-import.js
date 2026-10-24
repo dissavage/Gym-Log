@@ -23,7 +23,7 @@
     const direct = readDirect();
     if (direct) { preview(direct, 'the old app in this browser'); return; }
     HL.sheet.open({
-      title: 'Import from old Gym Tracker', icon: '📦',
+      title: 'Import from old Gym Tracker', icon: util.icon('download', 20),
       body: `
         <p class="block-gap">On iPhone, each Home Screen app keeps its own storage, so first save a copy from the old app:</p>
         <ol class="steps">
@@ -97,7 +97,7 @@
         <label class="check-inline"><input type="checkbox" name="goals" checked> Use my old daily goals (${esc(Object.entries(mapped.macroGoals).map(([k, v]) => `${v} ${MACRO_FIELD_NAME[k]}`).join(', '))})</label>` : ''}`;
 
     HL.sheet.open({
-      title: 'Import from old Gym Tracker', icon: '📦', body,
+      title: 'Import from old Gym Tracker', icon: util.icon('download', 20), body,
       footer: nothing ? '<button type="submit" class="btn btn-ghost">Close</button>'
         : '<button type="button" class="btn btn-ghost" data-act="cancel">Cancel</button><button type="submit" class="btn btn-primary">Import</button>',
       onMount: api => api.form.addEventListener('click', e => { if (e.target.closest('[data-act="cancel"]')) api.close(); }),

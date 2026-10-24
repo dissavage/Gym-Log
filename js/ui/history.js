@@ -4,7 +4,7 @@
 (function (HL) {
   'use strict';
 
-  const { util, units, domain, repo } = HL;
+  const { util, domain, repo } = HL;
   const { esc } = util;
   const PAGE = 50;
 
@@ -22,13 +22,13 @@
     observer?.disconnect();
 
     el.innerHTML = `
-      <header class="page-head"><div><h1 class="page-title">History</h1>
-        <p class="page-sub">${all.length ? `${all.length.toLocaleString()} log${all.length === 1 ? '' : 's'}` : 'Everything you log shows up here'}</p></div></header>
+      <header class="page-head"><div>
+        <p class="page-kicker">${all.length ? `${all.length.toLocaleString()} log${all.length === 1 ? '' : 's'}` : 'Everything you log shows up here'}</p><h1 class="page-title">History</h1></div></header>
       ${used.size ? `
         <div class="filter-row" role="group" aria-label="Filter by tracker">
           <button type="button" class="chip" data-filter="" aria-pressed="${!filter}">All</button>
           ${trackers.filter(t => used.has(t.key)).map(t =>
-            `<button type="button" class="chip" data-filter="${esc(t.key)}" aria-pressed="${filter === t.key}"><span aria-hidden="true">${t.icon}</span> ${esc(t.name)}</button>`).join('')}
+            `<button type="button" class="chip" data-filter="${esc(t.key)}" aria-pressed="${filter === t.key}">${util.trackerIcon(t, 16)}<span>${esc(t.name)}</span></button>`).join('')}
         </div>` : ''}
       <div id="hist-feed"></div>
       <div id="hist-more" class="hist-more" aria-hidden="true"></div>`;
@@ -55,7 +55,7 @@
     let day = shown ? rows[shown - 1].dayKey : null;
     for (const e of page) {
       if (!list || e.dayKey !== day) {
-        feed.insertAdjacentHTML('beforeend', `<h2 class="day-hdr">${esc(dayLabel(e.dayKey))}</h2><ul class="log-list card"></ul>`);
+        feed.insertAdjacentHTML('beforeend', `<h2 class="day-hdr section-label">${esc(dayLabel(e.dayKey))}</h2><ul class="log-list card"></ul>`);
         list = feed.lastElementChild;
         day = e.dayKey;
       }
@@ -78,16 +78,17 @@
     if (!t) return '';
     let title = t.name;
     let sum = domain.summarizeEntry(t, e, prefs);
-    if (t.kind === 'workout') {
+    const wo = t.kind === 'workout';
+    if (wo) {
       const s = domain.workoutSummary(e.values);
       title = e.values.name || 'Workout';
       sum = [`${s.exercises} exercise${s.exercises === 1 ? '' : 's'}`, `${s.workingSets} sets`,
-        e.values.durationMin ? util.fmtDuration(e.values.durationMin) : '', s.volume ? units.format('mass', s.volume, prefs, 0) : '']
+        e.values.durationMin ? util.fmtDuration(e.values.durationMin) : '']
         .filter(Boolean).join(' · ');
     }
     return `
-      <li><button type="button" class="log-row" data-edit="${e.id}">
-        <span class="log-icon" aria-hidden="true">${t.icon}</span>
+      <li><button type="button" class="log-row${wo ? ' is-workout' : ''}" data-edit="${e.id}">
+        <span class="icon-sq" aria-hidden="true">${util.trackerIcon(t, 18)}</span>
         <span class="log-main"><span class="log-name">${esc(title)}</span>
           <span class="log-sum">${esc(sum || 'No values')}</span></span>
         <span class="log-time">${esc(util.fmtTime(e.timestamp))}</span>
