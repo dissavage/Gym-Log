@@ -7,8 +7,10 @@
   const { util, domain, repo } = HL;
   const { esc } = util;
   const PAGE = 50;
+  const WORKOUT = 'workout';
 
   let filter = '';
+  let tpl = '';          // second filter, workouts only: a template id, 'other' (no or deleted template), or ''
   let rows = [];
   let shown = 0;
   let observer = null;
@@ -17,7 +19,17 @@
     const trackers = repo.trackers({ archived: true });
     const all = repo.entries();
     const used = new Set(all.map(e => e.type));
-    rows = filter ? all.filter(e => e.type === filter) : all;
+    const templates = repo.all('templates').sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    const live = new Set(templates.map(t => t.id));
+    const groupOf = e => (live.has(e.values.templateId) ? e.values.templateId : 'other');
+    const groups = new Set(all.filter(e => e.type === WORKOUT).map(groupOf));
+    if (!groups.has(tpl)) tpl = '';
+    const tplChips = [
+      ...templates.filter(t => groups.has(t.id)).map(t =>
+        `<button type="button" class="chip c-${esc(t.color || 'orange')}" data-tpl="${t.id}" aria-pressed="${tpl === t.id}"><span class="tpl-dot" aria-hidden="true"></span><span>${esc(t.name)}</span></button>`),
+      ...(groups.has('other') ? [`<button type="button" class="chip" data-tpl="other" aria-pressed="${tpl === 'other'}">Other</button>`] : []),
+    ];
+    rows = all.filter(e => (!filter || e.type === filter) && (!tpl || (e.type === WORKOUT && groupOf(e) === tpl)));
     shown = 0;
     observer?.disconnect();
 
@@ -30,6 +42,8 @@
           ${trackers.filter(t => used.has(t.key)).map(t =>
             `<button type="button" class="chip" data-filter="${esc(t.key)}" aria-pressed="${filter === t.key}">${util.trackerIcon(t, 16)}<span>${esc(t.name)}</span></button>`).join('')}
         </div>` : ''}
+      ${tplChips.length > 1 && (!filter || filter === WORKOUT) ? `
+        <div class="filter-row" role="group" aria-label="Filter workouts by template">${tplChips.join('')}</div>` : ''}
       <div id="hist-feed"></div>
       <div id="hist-more" class="hist-more" aria-hidden="true"></div>`;
 
@@ -97,7 +111,15 @@
 
   function onClick(e) {
     const f = e.target.closest('[data-filter]');
-    if (f) { filter = f.dataset.filter; render(document.getElementById('view-history')); return; }
+    if (f) { filter = f.dataset.filter; tpl = ''; render(document.getElementById('view-history')); return; }
+    // A template chip narrows to workouts; tapping it again clears it
+    const t = e.target.closest('[data-tpl]');
+    if (t) {
+      tpl = tpl === t.dataset.tpl ? '' : t.dataset.tpl;
+      if (tpl) filter = WORKOUT;
+      render(document.getElementById('view-history'));
+      return;
+    }
     const edit = e.target.closest('[data-edit]');
     if (edit) {
       const entry = repo.get('entries', edit.dataset.edit);
@@ -106,5 +128,5 @@
   }
 
   HL.views = HL.views || {};
-  HL.views.history = { stores: ['entries', 'trackers', 'exercises'], render, onClick };
+  HL.views.history = { stores: ['entries', 'trackers', 'exercises', 'templates'], render, onClick };
 })(globalThis.HL = globalThis.HL || {});

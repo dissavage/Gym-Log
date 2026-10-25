@@ -26,14 +26,23 @@
      PICKER
      ════════════════════════════════════ */
   /**
-   * pick({ title, onPick(exercise), manage })
+   * pick({ title, onPick(exercise), manage, suggest: { label, ids } })
    * Stays open so several exercises can be added; manage mode opens the editor instead.
+   * `suggest` lists exercises above the search (a template's, when adding to its session).
    */
-  function pick({ title = 'Add exercises', onPick, manage = false } = {}) {
+  function pick({ title = 'Add exercises', onPick, manage = false, suggest = null } = {}) {
     const picked = new Set();
     let query = '';
     let muscle = '';
     const recent = recentOrder();
+    const suggested = (suggest?.ids || []).map(id => repo.get('exercises', id)).filter(e => e && !e.archived && !e.deletedAt);
+
+    const rowHtml = e => `
+        <li><button type="button" class="pick-row" data-pick="${e.id}" aria-pressed="${picked.has(e.id)}">
+          <span class="grow"><span class="pick-name">${esc(e.name)}</span>
+          <span class="pick-sub">${esc([muscleNames(e.primary), e.equipment].filter(Boolean).join(' · '))}${e.builtIn ? '' : ' · custom'}</span></span>
+          <span class="pick-mark" aria-hidden="true">${icon(manage ? 'chev-right' : picked.has(e.id) ? 'check' : 'plus', 18)}</span>
+        </button></li>`;
 
     const listHtml = () => {
       const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -47,15 +56,16 @@
         });
       const create = `<button type="button" class="btn btn-dashed btn-block" data-act="create">+ Create ${query ? `“${esc(query)}”` : 'new exercise'}</button>`;
       if (!rows.length) return `<p class="empty-state compact">No exercises match.</p>${create}`;
-      return `<ul class="pick-list">${rows.map(e => `
-        <li><button type="button" class="pick-row" data-pick="${e.id}" aria-pressed="${picked.has(e.id)}">
-          <span class="grow"><span class="pick-name">${esc(e.name)}</span>
-          <span class="pick-sub">${esc([muscleNames(e.primary), e.equipment].filter(Boolean).join(' · '))}${e.builtIn ? '' : ' · custom'}</span></span>
-          <span class="pick-mark" aria-hidden="true">${icon(manage ? 'chev-right' : picked.has(e.id) ? 'check' : 'plus', 18)}</span>
-        </button></li>`).join('')}</ul>${create}`;
+      return `<ul class="pick-list">${rows.map(rowHtml).join('')}</ul>${create}`;
     };
 
     const body = `
+      ${suggested.length ? `
+      <section class="pick-suggest" aria-labelledby="pick-sug-h">
+        <h3 class="section-label" id="pick-sug-h">${esc(suggest.label)}</h3>
+        <ul class="pick-list">${suggested.map(rowHtml).join('')}</ul>
+      </section>
+      <h3 class="section-label pick-all-h">All exercises</h3>` : ''}
       <div class="field">
         <label class="sr-only" for="pick-q">Search exercises</label>
         <input type="search" class="input" id="pick-q" placeholder="Search exercises" autocomplete="off" enterkeyhint="search">
@@ -89,8 +99,11 @@
             if (picked.has(ex.id)) return;
             picked.add(ex.id);
             onPick(ex);
-            row.setAttribute('aria-pressed', 'true');
-            row.querySelector('.pick-mark').innerHTML = icon('check', 18);
+            // The same exercise can be listed twice (suggested and in the full list)
+            for (const r of util.$$(`[data-pick="${ex.id}"]`, api.form)) {
+              r.setAttribute('aria-pressed', 'true');
+              r.querySelector('.pick-mark').innerHTML = icon('check', 18);
+            }
             return;
           }
           if (e.target.closest('[data-act="create"]')) {

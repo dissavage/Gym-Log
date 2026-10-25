@@ -73,25 +73,21 @@
 
   const lastSession = id => history(id).slice(-1)[0] || null;
 
-  // Same structure and numbers as last time, nothing ticked. A template's set count wins.
-  function prefillSets(exerciseId, count) {
+  // Same structure and numbers as last time, nothing ticked
+  function prefillSets(exerciseId) {
     const last = lastSession(exerciseId);
-    if (count) {
-      const work = last ? last.sets.filter(s => s.setType === 'working' || s.setType === 'failure') : [];
-      return Array.from({ length: count }, (_, i) => {
-        const src = work[i] || work[work.length - 1];
-        return newSet(src ? { weightKg: src.weightKg, reps: src.reps } : {});
-      });
-    }
     if (last) return last.sets.map(s => newSet({ setType: s.setType, weightKg: s.weightKg, reps: s.reps }));
     return [newSet()];
   }
 
+  // A template slot only lends its rep target; the `sets` count older templates store is ignored
   const exerciseSlot = (exerciseId, slot = {}) => ({
     key: util.uuid(), exerciseId, notes: '',
     repMin: slot.repMin ?? null, repMax: slot.repMax ?? null,
-    sets: prefillSets(exerciseId, slot.sets),
+    sets: prefillSets(exerciseId),
   });
+
+  const liveTemplate = id => { const t = id && repo.get('templates', id); return t && !t.deletedAt ? t : null; };
 
   /* ════════════════════════════════════
      STARTING
@@ -110,9 +106,10 @@
     begin({ name: `${new Date().toLocaleDateString(undefined, { weekday: 'long' })} workout` });
   }
 
+  // Templates group sessions (Push, Pull…): the session starts blank and the
+  // template's exercises are offered at the top of the picker
   function startTemplate(t) {
-    const exercises = t.exercises.filter(s => repo.get('exercises', s.exerciseId)).map(s => exerciseSlot(s.exerciseId, s));
-    begin({ name: t.name, templateId: t.id, exercises });
+    begin({ name: t.name, templateId: t.id });
   }
 
   // Not reachable from the UI any more (kept for now)
@@ -235,7 +232,10 @@
 
   function bodyHtml() {
     if (!draft.exercises.length) {
-      return '<div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — sets fill in from last time automatically.</div>';
+      const t = liveTemplate(draft.templateId);
+      return `<div class="empty-state"><strong>No exercises yet</strong>${t?.exercises.length
+        ? `Tap Add exercise — your ${esc(t.name)} exercises are at the top of the list.`
+        : 'Add your first exercise — sets fill in from last time automatically.'}</div>`;
     }
     const prefs = repo.getSettings().units;
     const focus = focusedEx();
@@ -586,9 +586,13 @@
      EXERCISE ACTIONS
      ════════════════════════════════════ */
   function addExercises() {
+    const t = liveTemplate(draft.templateId);
+    const slots = new Map((t?.exercises || []).map(s => [s.exerciseId, s]));
+    const inSession = new Set(draft.exercises.map(ex => ex.exerciseId));
     HL.exercises.pick({
+      suggest: t && { label: `From ${t.name}`, ids: [...slots.keys()].filter(id => !inSession.has(id)) },
       onPick: exercise => {
-        const slot = exerciseSlot(exercise.id);
+        const slot = exerciseSlot(exercise.id, slots.get(exercise.id));
         draft.exercises.push(slot);
         if (!draft.active) draft.active = slot.sets.find(s => !s.done)?.id || null;
         saveDraft();
@@ -814,7 +818,7 @@
     if (asTemplate) {
       repo.put('templates', repo.make('template', {
         name: draft.name, color: 'orange', order: repo.all('templates').length,
-        exercises: exercises.map(ex => ({ exerciseId: ex.exerciseId, sets: ex.sets.filter(domain.isWorkingSet).length || ex.sets.length, repMin: ex.repMin, repMax: ex.repMax })),
+        exercises: exercises.map(ex => ({ exerciseId: ex.exerciseId, repMin: ex.repMin, repMax: ex.repMax })),
       }));
     }
     closeDraft();
@@ -866,10 +870,7 @@
           <button type="button" class="icon-btn" data-t="remove" aria-label="Remove">${util.icon('close', 18)}</button>
         </div>
         <div class="tpl-slot-row">
-          <span class="panel-lbl">Sets</span>
-          <button type="button" class="stepper-btn sm" data-t="sets-" aria-label="Fewer sets">−</button>
-          <span class="tpl-sets" aria-live="polite">${s.sets}</span>
-          <button type="button" class="stepper-btn sm" data-t="sets+" aria-label="More sets">+</button>
+          <span class="panel-lbl">Target reps</span>
           <label class="sr-only" for="rmin-${i}">Reps from</label>
           <input class="input tpl-rep" id="rmin-${i}" data-r="repMin" inputmode="numeric" placeholder="reps" value="${s.repMin ?? ''}">
           <span class="muted">–</span>
@@ -904,15 +905,12 @@
           const t = e.target.closest('[data-t]')?.dataset.t;
           if (!t) return;
           const i = Number(e.target.closest('[data-i]')?.dataset.i);
-          const s = state.exercises[i];
           if (t === 'add') {
             HL.exercises.pick({
               title: 'Add to template',
-              onPick: ex => { state.exercises.push({ exerciseId: ex.id, sets: 3, repMin: ex.repMin, repMax: ex.repMax }); refresh(); },
+              onPick: ex => { state.exercises.push({ exerciseId: ex.id, repMin: ex.repMin, repMax: ex.repMax }); refresh(); },
             });
           }
-          if (t === 'sets-') { s.sets = Math.max(1, s.sets - 1); refresh(); }
-          if (t === 'sets+') { s.sets = Math.min(20, s.sets + 1); refresh(); }
           if (t === 'remove') { state.exercises.splice(i, 1); refresh(); }
           if (t === 'up' || t === 'down') {
             const j = i + (t === 'up' ? -1 : 1);

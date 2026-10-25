@@ -106,8 +106,7 @@
     const lastOfThis = repo.entries({ type: 'workout' }).find(e => e.values.templateId === next.id);
     const slots = next.exercises.filter(s => repo.get('exercises', s.exerciseId));
     const muscles = [...new Set(slots.slice(0, 3).flatMap(s => repo.get('exercises', s.exerciseId).primary))];
-    const totalSets = slots.reduce((n, s) => n + (s.sets || 0), 0);
-    const sub = [`${slots.length} exercise${slots.length === 1 ? '' : 's'}`, `${totalSets} set${totalSets === 1 ? '' : 's'}`, HL.exercises.muscleNames(muscles)].filter(Boolean).join(' · ');
+    const sub = [`${slots.length} exercise${slots.length === 1 ? '' : 's'}`, HL.exercises.muscleNames(muscles)].filter(Boolean).join(' · ');
     return upNextCard('Up next', lastOfThis ? `Last done ${shortDay(lastOfThis.dayKey)}` : 'Not done yet', next.name, sub,
       `<button type="button" class="btn btn-primary btn-block" data-act="start-next" data-id="${next.id}">${util.icon('play', 18)} Start workout</button>`,
       ['<button type="button" class="btn btn-ghost" data-act="other-templates">Other templates</button>']);

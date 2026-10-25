@@ -488,6 +488,9 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .pick-list { list-style: none; margin-bottom: 12px; }
 .pick-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; text-align: left; border-top: 1px solid var(--border); padding: 4px 2px; }
 .pick-list li:first-child .pick-row { border-top: none; }
+.pick-suggest { margin-bottom: 8px; }
+.pick-suggest .section-label { margin-bottom: 4px; }
+.pick-all-h { margin-bottom: 10px; }
 .pick-name { display: block; font-size: 15px; font-weight: 600; }
 .pick-sub { display: block; font-size: 12px; color: var(--muted); }
 .pick-mark { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surf2); color: var(--accent-ink); font-weight: 900; flex-shrink: 0; }
@@ -501,8 +504,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .tpl-slot-top { display: flex; align-items: center; gap: 6px; }
 .tpl-slot-name { font-weight: 700; font-size: 14px; }
 .tpl-slot-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.stepper-btn.sm { width: 44px; min-height: 44px; font-size: 20px; }
-.tpl-sets { width: 28px; text-align: center; font-weight: 800; font-size: 17px; }
+.tpl-slot-row .panel-lbl { width: auto; margin-right: auto; }
 .tpl-rep { width: 64px; text-align: center; padding: 8px; }
 .color-seg span { font-size: 12px; gap: 5px; }
 .color-seg span::before { content: ''; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; background: var(--tc); }
@@ -539,10 +541,12 @@ body.rest-flash::after { content: ''; position: fixed; inset: 0; pointer-events:
    ════════════════════════════════════ */
 .filter-row { display: flex; gap: 8px; overflow-x: auto; margin: 0 calc(-1 * var(--gutter)) 14px; padding: 0 var(--gutter) 2px; scrollbar-width: none; }
 .filter-row::-webkit-scrollbar { display: none; }
+.filter-row + .filter-row { margin-top: -4px; }
 .filter-row .chip { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 22px; background: var(--surf); border-color: var(--border-strong); }
 .filter-row .chip .ico { color: var(--muted); }
 .filter-row .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .filter-row .chip[aria-pressed="true"] .ico { color: var(--on-accent); }
+.filter-row .chip[aria-pressed="true"] .tpl-dot { box-shadow: 0 0 0 1.5px var(--on-accent); }   /* the lime template's dot on the lime chip */
 .day-hdr { display: block; margin: 20px 0 8px; }
 .day-hdr:first-child { margin-top: 0; }
 .log-row.is-workout .icon-sq { background: var(--accent); color: var(--on-accent); }
