@@ -442,6 +442,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
   font-size: 16px; font-weight: 700; text-align: center; -moz-appearance: textfield;
 }
 .set-in:focus { border-color: var(--accent); }
+.set-in::placeholder, .stepper-input::placeholder { color: var(--faint); opacity: 1; }
 .set-check { width: 40px; height: 40px; justify-self: center; border-radius: 10px; border: 2px solid var(--dash); color: var(--muted); display: flex; align-items: center; justify-content: center; }
 .set-check[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .wo-add-set { min-height: var(--tap); border-width: 1px; border-radius: 12px; }

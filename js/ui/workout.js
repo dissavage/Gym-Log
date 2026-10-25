@@ -24,6 +24,7 @@
   let panelOpen = false;       // detail panel under the active set (UI only, not saved)
   let focusOverride = null;    // exercise picked from a collapsed row
   let suppressClickUntil = 0;
+  let typing = null;           // weight/reps input cleared on focus: { el, setId, key, value }
 
   /* ════════════════════════════════════
      DRAFT
@@ -151,6 +152,7 @@
     if (!el) return;
     loadDraft();
     clearInterval(elapsedTimer);
+    typing = null;
     if (!draft) { el.innerHTML = startHtml(); return; }
     el.innerHTML = activeHtml();
     updateProgress();
@@ -402,6 +404,7 @@
         focusSel = `${id ? `[data-set="${id}"] ` : holder?.dataset.ex ? `[data-ex="${holder.dataset.ex}"] ` : ''}${a.dataset.act ? `[data-act="${a.dataset.act}"]` : `[data-field="${a.dataset.field}"]`}`;
       }
     }
+    typing = null;   // the cleared input is about to be replaced (re-focusing it below clears it again)
     list.innerHTML = bodyHtml();
     updateProgress();
     if (!focusSel) return;
@@ -529,8 +532,14 @@
     } else {
       set.reps = Math.max(0, (set.reps || 0) + dir);
     }
+    // Stepping while this field is cleared for typing: the stepped number becomes the one to fall back to.
+    // A different cleared field of the same set stays empty.
+    const key = field === 'weight' ? 'weightKg' : 'reps';
+    const cleared = typing?.setId === setId ? typing : null;
+    if (cleared?.key === key) cleared.value = set[key];
     saveDraft();
-    refreshSet(set);
+    refreshSet(set, cleared && cleared.key !== key ? cleared.el : null);
+    if (cleared?.key === key) cleared.el.dataset.prev = cleared.el.value;
   }
 
   function addSet(key) {
@@ -975,10 +984,37 @@
     if (!field || !holder) return;
     const { set } = findSet(holder.dataset.set || holder.dataset.panel);
     const n = util.parseNum(e.target.value);
-    if (field === 'weight') set.weightKg = n == null ? null : units.toCanonical('mass', Math.max(0, n), units.unitFor('mass', repo.getSettings().units));
+    // Typed then erased: the set keeps the number it had before the tap
+    if (e.target === typing?.el && e.target.value === '') set[typing.key] = typing.value;
+    else if (field === 'weight') set.weightKg = n == null ? null : units.toCanonical('mass', Math.max(0, n), units.unitFor('mass', repo.getSettings().units));
     else set.reps = n == null ? null : Math.max(0, Math.round(n));
     saveDraft();
     refreshSet(set, e.target);
+  }
+
+  // Tapping a prefilled number empties it for typing; the old number stays visible as the placeholder.
+  // Left empty, it goes back on blur. The draft keeps the old number meanwhile, so ✓ and −/+ use it.
+  function onFocusIn(e) {
+    const el = e.target;
+    const holder = el.matches('input[data-field]') && el.closest('[data-set], [data-panel]');
+    const found = holder && findSet(holder.dataset.set || holder.dataset.panel);
+    if (!found) return;
+    const key = el.dataset.field === 'weight' ? 'weightKg' : 'reps';
+    typing = { el, setId: found.set.id, key, value: found.set[key] };
+    el.dataset.prev = el.value;
+    el.dataset.ph = el.placeholder;
+    if (el.value) el.placeholder = el.value;
+    el.value = '';
+  }
+
+  function onFocusOut(e) {
+    const el = e.target;
+    if (el !== typing?.el) return;
+    if (el.value === '') el.value = el.dataset.prev;
+    el.placeholder = el.dataset.ph;
+    delete el.dataset.prev;
+    delete el.dataset.ph;
+    typing = null;
   }
 
   function onChange(e) {
@@ -1001,6 +1037,8 @@
     el.addEventListener('pointermove', onPointerMove);
     el.addEventListener('pointerup', onPointerUp);
     el.addEventListener('pointercancel', onPointerUp);
+    el.addEventListener('focusin', onFocusIn);
+    el.addEventListener('focusout', onFocusOut);
   }
 
   HL.views = HL.views || {};
