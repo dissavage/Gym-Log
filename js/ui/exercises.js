@@ -26,11 +26,12 @@
      PICKER
      ════════════════════════════════════ */
   /**
-   * pick({ title, onPick(exercise), manage, suggest: { label, ids } })
-   * Stays open so several exercises can be added; manage mode opens the editor instead.
-   * `suggest` lists exercises above the search (a template's, when adding to its session).
+   * pick({ title, onPick(exercise), onUnpick(exercise), manage, suggest: { label, ids } })
+   * Stays open so several exercises can be added; tapping a ticked one again un-adds it (onUnpick).
+   * Manage mode opens the editor instead. `suggest` lists exercises above the search
+   * (a template's, when adding to its session).
    */
-  function pick({ title = 'Add exercises', onPick, manage = false, suggest = null } = {}) {
+  function pick({ title = 'Add exercises', onPick, onUnpick, manage = false, suggest = null } = {}) {
     const picked = new Set();
     let query = '';
     let muscle = '';
@@ -96,13 +97,13 @@
           if (row) {
             const ex = repo.get('exercises', row.dataset.pick);
             if (manage) { edit(ex, { onSave: refresh }); return; }
-            if (picked.has(ex.id)) return;
-            picked.add(ex.id);
-            onPick(ex);
+            const on = !picked.has(ex.id);
+            if (!on && !onUnpick) return;
+            if (on) { picked.add(ex.id); onPick(ex); } else { picked.delete(ex.id); onUnpick(ex); }
             // The same exercise can be listed twice (suggested and in the full list)
             for (const r of util.$$(`[data-pick="${ex.id}"]`, api.form)) {
-              r.setAttribute('aria-pressed', 'true');
-              r.querySelector('.pick-mark').innerHTML = icon('check', 18);
+              r.setAttribute('aria-pressed', String(on));
+              r.querySelector('.pick-mark').innerHTML = icon(on ? 'check' : 'plus', 18);
             }
             return;
           }

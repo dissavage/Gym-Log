@@ -376,10 +376,26 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .c-purple { --tc: var(--purple); } .c-yellow { --tc: var(--yellow); }
 
 /* Active workout: header, progress */
-.wo-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+/* Sticky: pulled up over the view's 20px top padding and out to its edges so content scrolls under a solid
+   strip. Sticky offsets count from inside that padding, hence top: -20px = flush with the view's top edge.
+   The view starts below the status bar (body has the safe-area padding), so it never slides under it. */
+.wo-head {
+  position: sticky; top: -20px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: -20px calc(-1 * var(--gutter)) 14px; padding: 10px var(--gutter); background: var(--bg);
+}
 .wo-head .icon-btn { background: transparent; }
-.wo-title { flex: 1; min-width: 0; min-height: var(--tap); display: flex; flex-direction: column; align-items: center; text-align: center; border-radius: 12px; }
-.wo-kicker { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wo-title { flex: 1; min-width: 0; min-height: var(--tap); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border-radius: 12px; }
+.wo-name { display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; min-height: 32px; font-size: 16px; font-weight: 700; color: var(--text); }
+.wo-name > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wo-name .ico { color: var(--muted); flex-shrink: 0; }
+.wo-name-in {
+  width: 100%; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--bg); border: 1.5px solid var(--accent-ink);
+  font-size: max(16px, 1rem); font-weight: 700; text-align: center; color: var(--text);
+}
+.wo-name-in:focus-visible { outline: none; }   /* the accent border is the focus mark */
+.wo-sub { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* Anything scrolled into view clears the sticky header */
+#view-workout .wo-ex, #view-workout .set-row { scroll-margin-top: 96px; }
 .wo-timer { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1.05; font-variant-numeric: tabular-nums; text-transform: uppercase; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.wo-finish { min-height: var(--tap); padding: 0 16px; font-size: 19px; }
 .wo-progress { margin-bottom: 14px; }

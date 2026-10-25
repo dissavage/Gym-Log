@@ -25,6 +25,7 @@
   let expandPick = null;       // UI only: { key } expanded by hand ({ key: null } = all collapsed); null = default rule
   let suppressClickUntil = 0;
   let typing = null;           // weight/reps input cleared on focus: { el, setId, key, value }
+  let naming = null;           // UI only: while the header's name input is open, the name to fall back to
 
   /* ════════════════════════════════════
      DRAFT
@@ -78,18 +79,20 @@
   /* ════════════════════════════════════
      STARTING
      ════════════════════════════════════ */
-  function begin(props) {
+  function begin(props, { rename = false } = {}) {
     draft = repo.make('draft', { id: DRAFT_ID, name: 'Workout', templateId: null, editingId: null, startedAt: util.localISO(), exercises: [], active: null, rest: null, ...props });
     draft.active = draft.exercises.flatMap(e => e.sets).find(s => !s.done)?.id || null;
     panelOpen = false;
     expandPick = null;
+    naming = rename ? draft.name : null;
     saveDraft();
     render();
     if (viewEl) viewEl.scrollTop = 0;
   }
 
+  // Opens with the name ready to type over; the caller focuses it (focusName) inside the same tap
   function startEmpty() {
-    begin({ name: `${new Date().toLocaleDateString(undefined, { weekday: 'long' })} workout` });
+    begin({ name: `${new Date().toLocaleDateString(undefined, { weekday: 'long' })} workout` }, { rename: true });
   }
 
   // The template's exercises in order, one set each; the first one opens expanded
@@ -137,7 +140,7 @@
     loadDraft();
     clearInterval(elapsedTimer);
     typing = null;
-    if (!draft) { el.innerHTML = startHtml(); return; }
+    if (!draft) { naming = null; el.innerHTML = startHtml(); return; }
     el.innerHTML = activeHtml();
     updateProgress();
     HL.rest.sync();
@@ -185,16 +188,28 @@
 
   const restLabel = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
-  function activeHtml() {
+  // Name + timer. While renaming, the name is an input in the same spot (sticky, so above the keyboard).
+  function titleHtml() {
     const editing = draft.editingId ? repo.get('entries', draft.editingId) : null;
-    const kicker = editing ? `Editing · ${util.fmtDay(editing.dayKey, { weekday: 'short', month: 'short', day: 'numeric' })}` : draft.name;
+    const sub = editing
+      ? `<span class="wo-sub">Editing · ${esc(util.fmtDay(editing.dayKey, { weekday: 'short', month: 'short', day: 'numeric' }))}</span>`
+      : '<span class="wo-timer" data-elapsed>0:00</span>';
+    if (naming != null) {
+      return `<div class="wo-title">
+          <input class="wo-name-in" data-rename-input value="${esc(draft.name)}" maxlength="60" enterkeyhint="done" autocomplete="off" autocapitalize="words" aria-label="Workout name">
+          ${sub}</div>`;
+    }
+    return `<button type="button" class="wo-title" data-act="rename" aria-label="Rename workout: ${esc(draft.name)}">
+        <span class="wo-name"><span>${esc(draft.name)}</span>${util.icon('pencil', 14)}</span>
+        ${sub}</button>`;
+  }
+
+  function activeHtml() {
+    const editing = !!draft.editingId;
     return `
       <header class="wo-head">
         <button type="button" class="icon-btn" data-act="back" aria-label="Back to Today">${util.icon('chev-down', 22)}</button>
-        <button type="button" class="wo-title" data-act="rename" aria-label="Rename workout: ${esc(draft.name)}">
-          <span class="wo-kicker">${esc(kicker)} ${util.icon('pencil', 12)}</span>
-          ${editing ? `<span class="wo-timer">${esc(draft.name)}</span>` : '<span class="wo-timer" data-elapsed>0:00</span>'}
-        </button>
+        ${titleHtml()}
         <button type="button" class="btn btn-primary wo-finish" data-act="finish">${editing ? 'Save' : 'Finish'}</button>
       </header>
       <div class="wo-progress">
@@ -564,11 +579,14 @@
     const t = liveTemplate(draft.templateId);
     const slots = new Map((t?.exercises || []).map(s => [s.exerciseId, s]));
     const inSession = new Set(draft.exercises.map(ex => ex.exerciseId));
+    const addedNow = new Map();   // exerciseId → key, for un-adding from the picker
     HL.exercises.pick({
+      onUnpick: exercise => { if (addedNow.has(exercise.id)) removeExercise(addedNow.get(exercise.id)); addedNow.delete(exercise.id); },
       suggest: t && { label: `From ${t.name}`, ids: [...slots.keys()].filter(id => !inSession.has(id)) },
       onPick: exercise => {
         const slot = exerciseSlot(exercise.id, slots.get(exercise.id));
         draft.exercises.push(slot);
+        addedNow.set(exercise.id, slot.key);
         // The new exercise opens with its one set ready to edit
         draft.active = slot.sets[0].id;
         expandPick = null;
@@ -821,18 +839,39 @@
     });
   }
 
+  // Rename inline in the sticky header: a bottom sheet would sit under the iPhone keyboard
   function rename() {
-    HL.sheet.open({
-      title: 'Rename workout', icon: util.icon('pencil', 20),
-      body: `<div class="field"><label class="field-label" for="rn">Name</label><input class="input" id="rn" name="name" value="${esc(draft.name)}" autofocus></div>`,
-      footer: '<button type="submit" class="btn btn-primary">Save</button>',
-      onSubmit: (form, api) => {
-        draft.name = form.elements.name.value.trim() || draft.name;
-        saveDraft();
-        api.close();
-        render();
-      },
-    });
+    if (naming == null) naming = draft.name;
+    renderTitle();
+    focusName();
+  }
+
+  // iOS only opens the keyboard when focus() runs inside the tap itself: call this synchronously
+  // from the click handler, after the (synchronous) render. No timers or awaits before it.
+  function focusName() {
+    const input = viewEl?.querySelector('[data-rename-input]');
+    if (!input) return;
+    input.focus({ preventScroll: true });   // it's in the sticky header: scrolling to it only hides the progress line
+    input.select();
+    input.setSelectionRange(0, input.value.length);   // select() alone doesn't always take on iOS
+  }
+
+  // Enter / tap outside keep what was typed; Escape, or leaving it empty, keeps the name it had
+  function commitName(keep) {
+    if (naming == null) return;
+    const typed = viewEl.querySelector('[data-rename-input]')?.value.trim();
+    draft.name = (keep && typed) || naming;
+    naming = null;
+    saveDraft();
+    renderTitle();
+  }
+
+  // Only the title is redrawn, so a tap on Back or Finish that ends the rename still lands
+  function renderTitle() {
+    const title = viewEl?.querySelector('.wo-head .wo-title');
+    if (!title) return;
+    title.outerHTML = titleHtml();
+    tickElapsed();
   }
 
   /* ════════════════════════════════════
@@ -888,6 +927,11 @@
             HL.exercises.pick({
               title: 'Add to template',
               onPick: ex => { state.exercises.push({ exerciseId: ex.id, repMin: ex.repMin, repMax: ex.repMax }); refresh(); },
+              onUnpick: ex => {
+                const at = state.exercises.map(s => s.exerciseId).lastIndexOf(ex.id);
+                if (at >= 0) state.exercises.splice(at, 1);
+                refresh();
+              },
             });
           }
           if (t === 'remove') { state.exercises.splice(i, 1); refresh(); }
@@ -929,7 +973,7 @@
     switch (act) {
       case 'back':            HL.app.show('today'); break;
       case 'focus-ex':        setExpanded(key); break;
-      case 'start-empty':     startEmpty(); break;
+      case 'start-empty':     startEmpty(); focusName(); break;
       case 'start-template':  startTemplate(template); break;
       case 'edit-template':   openTemplateEditor(template); break;
       case 'new-template':    openTemplateEditor(null); break;
@@ -979,12 +1023,20 @@
 
   function onFocusOut(e) {
     const el = e.target;
+    if (el.matches('[data-rename-input]')) { commitName(true); return; }
     if (el !== typing?.el) return;
     if (el.value === '') el.value = el.dataset.prev;
     el.placeholder = el.dataset.ph;
     delete el.dataset.prev;
     delete el.dataset.ph;
     typing = null;
+  }
+
+  function onKeyDown(e) {
+    if (!e.target.matches('[data-rename-input]') || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+    e.preventDefault();
+    commitName(e.key === 'Enter');
+    viewEl.querySelector('[data-act="rename"]')?.focus({ preventScroll: true });
   }
 
   function onChange(e) {
@@ -1009,6 +1061,7 @@
     el.addEventListener('pointercancel', onPointerUp);
     el.addEventListener('focusin', onFocusIn);
     el.addEventListener('focusout', onFocusOut);
+    el.addEventListener('keydown', onKeyDown);
   }
 
   HL.views = HL.views || {};
@@ -1025,6 +1078,7 @@
     current: () => { loadDraft(); return draft; },
     nextTemplate: () => nextTemplate(),
     start: startFrom(templateId => { const t = repo.get('templates', templateId); if (t) startTemplate(t); }),
-    startEmpty: startFrom(startEmpty),
+    // From Today's button: still inside that tap, so the name field can take focus (and the keyboard)
+    startEmpty: () => { startFrom(startEmpty)(); focusName(); },
   };
 })(globalThis.HL = globalThis.HL || {});
