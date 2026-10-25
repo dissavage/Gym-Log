@@ -166,7 +166,7 @@
       const flag = new URLSearchParams(location.search).get('debug');
       if (flag === '1') localStorage.setItem('healthlog.debug', '1');
       if (flag === '0') localStorage.removeItem('healthlog.debug');
-      if (localStorage.getItem('healthlog.debug') === '1') document.head.appendChild(Object.assign(document.createElement('script'), { src: 'js/debug.js?v=13' }));
+      if (localStorage.getItem('healthlog.debug') === '1') document.head.appendChild(Object.assign(document.createElement('script'), { src: 'js/debug.js?v=14' }));
     } catch { /* storage blocked: no readout */ }
     // While a text field in a view has focus (the iPhone keyboard is up) the tab bar hides, so it doesn't
     // ride up on the keyboard. Re-checked a tick after focus moves (no flicker between fields) and after

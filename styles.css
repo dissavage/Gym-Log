@@ -44,13 +44,18 @@
   --glass: rgba(255,255,255,.85); --tab-active: rgba(26,25,23,.12);
   color-scheme: light;
 }
-html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); height: 100%; }
+/* Set by the head script only when an installed iPhone app gets a viewport shorter than the screen:
+   the page grows by the missing height (the status bar's) so it reaches the real bottom edge. */
+html.fill-screen { height: calc(100% + var(--fill-screen, 0px)); overflow: hidden; }
 /* The installed iPhone app's status bar text is always white, so keep a dark strip behind it */
 :root[data-theme="light"] body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); background: #1a1917; z-index: 500; }
 body {
   background: var(--bg); color: var(--text);
   font-family: var(--font-body); font-size: 15px; line-height: 1.4;
-  height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
+  /* Fills html (not 100dvh, which comes out short in the installed app). It's also what the tab bar,
+     rest pill, toasts and sheets are positioned in: position: fixed would follow the short viewport. */
+  position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden;
   padding-top: var(--safe-t); -webkit-tap-highlight-color: transparent;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -79,7 +84,7 @@ body:has(#rest-pill:not([hidden])):not(:has(#view-workout:not([hidden]))) .view 
    screen edge (just over the home indicator when installed, 8px above Safari's toolbar in the browser);
    views keep --tabbar-space clear. Hidden while typing (keyboard up). */
 .tabbar {
-  position: fixed; left: 20px; right: 20px; bottom: var(--tabbar-gap); z-index: 100; max-width: 480px; margin: 0 auto;
+  position: absolute; left: 20px; right: 20px; bottom: var(--tabbar-gap); z-index: 100; max-width: 480px; margin: 0 auto;
   height: var(--tabbar-h); border-radius: 28px; padding: 0 6px;
   display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
   background: var(--surf); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.18);
@@ -327,7 +332,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 /* ════════════════════════════════════
    SHEET
    ════════════════════════════════════ */
-.sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; display: flex; align-items: flex-end; animation: fade-in .18s ease-out; }
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.75); z-index: 200; display: flex; align-items: flex-end; animation: fade-in .18s ease-out; }
 .sheet {
   width: 100%; max-height: 92dvh; display: flex; flex-direction: column; background: var(--bg);
   border-top: 1px solid var(--border); border-radius: 22px 22px 0 0; animation: slide-up .22s ease-out;
@@ -356,7 +361,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
    TOAST & BANNERS
    ════════════════════════════════════ */
 #toast-root {
-  position: fixed; left: 50%; transform: translateX(-50%); z-index: 300;
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 300;
   bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 12px); width: calc(100% - 32px); max-width: 420px; pointer-events: none;
 }
 .toast {
@@ -574,7 +579,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 /* REST TIMER */
 /* Floats just above the tab bar pill (same width) */
 .rest-pill {
-  position: fixed; left: 20px; right: 20px; bottom: calc(var(--tabbar-gap) + var(--tabbar-h) + 8px); z-index: 100;
+  position: absolute; left: 20px; right: 20px; bottom: calc(var(--tabbar-gap) + var(--tabbar-h) + 8px); z-index: 100;
   max-width: 480px; margin: 0 auto; display: flex; align-items: center; gap: 6px;
   padding: 6px 8px 6px 14px; background: var(--surf2); border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
   box-shadow: 0 6px 20px rgba(0,0,0,.22);
@@ -600,7 +605,7 @@ body:has(#view-workout:not([hidden])) #rest-pill { display: none; }
 .rest-card .rest-bar { height: 3px; background: transparent; }
 .rest-btns { display: flex; gap: 6px; }
 .rest-card .rest-btn { background: var(--surf3); font-size: 14px; font-weight: 700; }
-body.rest-flash::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 400; border: 6px solid var(--accent); animation: flash 1.2s ease-out; }
+body.rest-flash::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 400; border: 6px solid var(--accent); animation: flash 1.2s ease-out; }
 @keyframes flash { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ════════════════════════════════════
