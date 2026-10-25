@@ -23,8 +23,13 @@
   --chart-1: #D4FF3A; --band: rgba(241,240,238,.1);
   --font-display: 'Barlow Condensed', system-ui, sans-serif;
   --font-body: Inter, system-ui, sans-serif;
-  --nav: 52px; --tap: 44px; --gutter: 16px;
+  --tap: 44px; --gutter: 16px;
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
+  /* Floating tab bar: the only place the bottom safe area is used outside sheets. 34pt inset → 15pt gap */
+  --tabbar-h: 56px;
+  --tabbar-gap: max(8px, calc(var(--safe-b) - 19px));
+  --tabbar-space: calc(var(--tabbar-h) + var(--tabbar-gap) + 16px);   /* what a view keeps clear at the bottom */
+  --glass: rgba(22,24,28,.85); --tab-active: rgba(244,245,246,.12);
   color-scheme: dark;
 }
 /* Light theme (opt-in from More → Display) */
@@ -36,9 +41,10 @@
   --warn: #a16207; --drop: #7e22ce;
   --red: #ef4444; --red-d: rgba(239,68,68,.1); --red-ink: #b91c1c; --blue-ink: #1d4ed8;
   --chart-1: #4D6B00; --band: rgba(26,25,23,.08);
+  --glass: rgba(255,255,255,.85); --tab-active: rgba(26,25,23,.12);
   color-scheme: light;
 }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 /* The installed iPhone app's status bar text is always white, so keep a dark strip behind it */
 :root[data-theme="light"] body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); background: #1a1917; z-index: 500; }
 body {
@@ -64,23 +70,29 @@ button { cursor: pointer; background: none; border: none; }
    LAYOUT & NAV
    ════════════════════════════════════ */
 main { flex: 1; min-height: 0; position: relative; }
-.view { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 20px var(--gutter) 28px; -webkit-overflow-scrolling: touch; }
+.view { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 20px var(--gutter) var(--tabbar-space); -webkit-overflow-scrolling: touch; }
+/* The rest pill floats above the tab bar on other tabs: keep that clear too */
+body:has(#rest-pill:not([hidden])):not(:has(#view-workout:not([hidden]))) .view { padding-bottom: calc(var(--tabbar-space) + 64px); }
 .view::-webkit-scrollbar { display: none; }
 
-/* Like Instagram's: a 52px row hugging the bottom, then the home-indicator inset below it, so the icons
-   centre in the 52px rather than in the whole bar. It's the last flex child of the 100dvh body, so it
-   sits flush at the bottom (no fixed positioning, nothing scrolls under it). Hidden while typing. */
+/* Instagram-style floating pill: icons only, content scrolls behind it. It sits --tabbar-gap above the
+   screen edge (just over the home indicator when installed, 8px above Safari's toolbar in the browser);
+   views keep --tabbar-space clear. Hidden while typing (keyboard up). */
 .tabbar {
-  display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: var(--nav); flex-shrink: 0;
-  background: var(--bg); border-top: 1px solid var(--surf2); padding-bottom: var(--safe-b);
+  position: fixed; left: 20px; right: 20px; bottom: var(--tabbar-gap); z-index: 100; max-width: 480px; margin: 0 auto;
+  height: var(--tabbar-h); border-radius: 28px; padding: 0 6px;
+  display: grid; grid-template-columns: repeat(5, 1fr); align-items: center;
+  background: var(--surf); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.18);
 }
-body.typing .tabbar { display: none; }
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .tabbar { background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); }
+}
+body.typing .tabbar, body.typing #rest-pill { display: none; }
 .tab-btn {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0;
-  color: var(--muted); font-size: 10px; font-weight: 600; line-height: 1.2; transition: color .2s;
+  display: flex; align-items: center; justify-content: center; width: 100%; height: var(--tap); border-radius: 22px;
+  color: var(--muted); transition: color .2s, background-color .2s;
 }
-.tab-btn > span:last-child { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tab-btn[aria-current="page"] { color: var(--accent-ink); font-weight: 700; }
+.tab-btn[aria-current="page"] { color: var(--text); background: var(--tab-active); }
 .tab-icon { display: flex; }
 
 /* Inline SVG icons from util.icon() */
@@ -345,7 +357,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
    ════════════════════════════════════ */
 #toast-root {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 300;
-  bottom: calc(var(--nav) + var(--safe-b) + 12px); width: calc(100% - 32px); max-width: 420px; pointer-events: none;
+  bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 12px); width: calc(100% - 32px); max-width: 420px; pointer-events: none;
 }
 .toast {
   display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; min-height: 48px; border-radius: 14px;
@@ -560,10 +572,15 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .color-seg span::before { content: ''; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; background: var(--tc); }
 
 /* REST TIMER */
+/* Floats just above the tab bar pill (same width) */
 .rest-pill {
-  position: relative; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
-  padding: 6px 8px 6px 14px; background: var(--surf2); border-top: 1px solid var(--border); overflow: hidden;
+  position: fixed; left: 20px; right: 20px; bottom: calc(var(--tabbar-gap) + var(--tabbar-h) + 8px); z-index: 100;
+  max-width: 480px; margin: 0 auto; display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px 6px 14px; background: var(--surf2); border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,.22);
 }
+/* …and toasts clear it */
+body:has(#rest-pill:not([hidden])):not(:has(#view-workout:not([hidden]))) #toast-root { bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 76px); }
 .rest-bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--surf3); }
 .rest-fill { height: 100%; background: var(--accent); transition: width .25s linear; }
 .rest-lbl { font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
