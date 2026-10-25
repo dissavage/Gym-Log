@@ -45,9 +45,14 @@
   color-scheme: light;
 }
 html { -webkit-text-size-adjust: 100%; background: var(--bg); height: 100%; }
-/* Set by the head script only when an installed iPhone app gets a viewport shorter than the screen:
-   the page grows by the missing height (the status bar's) so it reaches the real bottom edge. */
-html.fill-screen { height: calc(100% + var(--fill-screen, 0px)); overflow: hidden; }
+/* Installed iPhone app: iOS draws from the very top, under the black-translucent status bar, but sizes
+   the viewport (100%, 100dvh, innerHeight) short by the status bar's height, leaving a strip at the
+   bottom. 100vh / 100lvh are the full screen there, so the page uses them (body's top padding stays
+   inside: border-box). Safari in the browser never matches, so its toolbar isn't affected. */
+@media (display-mode: standalone) {
+  html, body { height: 100vh; height: 100lvh; }
+  html { overflow: hidden; }   /* the page is taller than the reported viewport: don't let it scroll */
+}
 /* The installed iPhone app's status bar text is always white, so keep a dark strip behind it */
 :root[data-theme="light"] body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: var(--safe-t); background: #1a1917; z-index: 500; }
 body {

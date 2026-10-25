@@ -27,9 +27,8 @@
     box.textContent = [
       `safe-area top ${px(ps.paddingTop)}  bottom ${px(ps.paddingBottom)}`,
       `innerH ${innerHeight}  clientH ${document.documentElement.clientHeight}  screenH ${screen.height}  vv ${vv ? `${px(vv.height)} @${px(vv.offsetTop)}` : '-'}`,
-      `standalone ${matchMedia('(display-mode: standalone)').matches || navigator.standalone === true}  dpr ${devicePixelRatio}`,
+      `display-mode standalone ${matchMedia('(display-mode: standalone)').matches}  navigator.standalone ${navigator.standalone}  dpr ${devicePixelRatio}`,
       `units ${units.map(([u, d]) => `${u} ${px(d.getBoundingClientRect().height)}`).join('  ')}`,
-      `fill-screen ${document.documentElement.classList.contains('fill-screen') ? 'ON' : 'off'}  +${getComputedStyle(document.documentElement).getPropertyValue('--fill-screen').trim() || '0px'}`,
       `nav top ${px(r.top)}  bottom ${px(r.bottom)}  h ${px(r.height)}  gap to viewport ${px(innerHeight - r.bottom)}  gap to screen ${px(Math.max(screen.width, screen.height) - r.bottom)}`,
       `html  ${sizeOf(document.documentElement)}`,
       `body  ${sizeOf(document.body)}`,

@@ -12,25 +12,6 @@
       if (t === 'auto') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       document.documentElement.dataset.theme = t;
     } catch (e) { document.documentElement.dataset.theme = 'dark'; }
-
-    // iOS home-screen apps with a black-translucent status bar draw from the very top, under the status
-    // bar, but get a viewport that's short by its height, leaving an empty strip at the bottom. When the
-    // viewport really is short, stretch the page by exactly the missing height (html.fill-screen in
-    // styles.css). In Safari, or once iOS fixes it, nothing changes.
-    (function () {
-      function fit() {
-        var root = document.documentElement;
-        var standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
-        var full = matchMedia('(orientation: landscape)').matches ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
-        var missing = standalone ? Math.round(full - window.innerHeight) : 0;
-        var on = missing > 0 && missing <= 100;
-        root.classList.toggle('fill-screen', on);
-        root.style.setProperty('--fill-screen', (on ? missing : 0) + 'px');
-      }
-      fit();
-      addEventListener('resize', fit);
-      addEventListener('orientationchange', fit);
-    })();
   </script>
   <title>Health Log</title>
   <link rel="manifest" href="manifest.json">
@@ -41,7 +22,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Health Log">
   <!-- Bump ?v= (and VERSION in sw.js) on every release so phones never mix cached old and new files -->
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 
@@ -67,31 +48,31 @@
 
 <div id="toast-root" aria-live="polite"></div>
 
-<script src="js/util.js?v=14"></script>
-<script src="js/units.js?v=14"></script>
-<script src="js/schema.js?v=14"></script>
-<script src="js/domain.js?v=14"></script>
-<script src="js/session.js?v=14"></script>
-<script src="js/backup.js?v=14"></script>
-<script src="js/legacy.js?v=14"></script>
-<script src="js/demo.js?v=14"></script>
-<script src="js/db.js?v=14"></script>
-<script src="js/repo.js?v=14"></script>
-<script src="js/ui/toast.js?v=14"></script>
-<script src="js/ui/sheet.js?v=14"></script>
-<script src="js/ui/entry.js?v=14"></script>
-<script src="js/ui/rest.js?v=14"></script>
-<script src="js/ui/duration.js?v=14"></script>
-<script src="js/ui/exercises.js?v=14"></script>
-<script src="js/ui/workout.js?v=14"></script>
-<script src="js/ui/charts.js?v=14"></script>
-<script src="js/ui/history.js?v=14"></script>
-<script src="js/ui/insights.js?v=14"></script>
-<script src="js/ui/trackers.js?v=14"></script>
-<script src="js/ui/data.js?v=14"></script>
-<script src="js/ui/legacy-import.js?v=14"></script>
-<script src="js/ui/today.js?v=14"></script>
-<script src="js/ui/settings.js?v=14"></script>
-<script src="js/app.js?v=14"></script>
+<script src="js/util.js?v=15"></script>
+<script src="js/units.js?v=15"></script>
+<script src="js/schema.js?v=15"></script>
+<script src="js/domain.js?v=15"></script>
+<script src="js/session.js?v=15"></script>
+<script src="js/backup.js?v=15"></script>
+<script src="js/legacy.js?v=15"></script>
+<script src="js/demo.js?v=15"></script>
+<script src="js/db.js?v=15"></script>
+<script src="js/repo.js?v=15"></script>
+<script src="js/ui/toast.js?v=15"></script>
+<script src="js/ui/sheet.js?v=15"></script>
+<script src="js/ui/entry.js?v=15"></script>
+<script src="js/ui/rest.js?v=15"></script>
+<script src="js/ui/duration.js?v=15"></script>
+<script src="js/ui/exercises.js?v=15"></script>
+<script src="js/ui/workout.js?v=15"></script>
+<script src="js/ui/charts.js?v=15"></script>
+<script src="js/ui/history.js?v=15"></script>
+<script src="js/ui/insights.js?v=15"></script>
+<script src="js/ui/trackers.js?v=15"></script>
+<script src="js/ui/data.js?v=15"></script>
+<script src="js/ui/legacy-import.js?v=15"></script>
+<script src="js/ui/today.js?v=15"></script>
+<script src="js/ui/settings.js?v=15"></script>
+<script src="js/app.js?v=15"></script>
 </body>
 </html>
