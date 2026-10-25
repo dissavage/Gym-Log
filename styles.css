@@ -23,7 +23,7 @@
   --chart-1: #D4FF3A; --band: rgba(241,240,238,.1);
   --font-display: 'Barlow Condensed', system-ui, sans-serif;
   --font-body: Inter, system-ui, sans-serif;
-  --nav: 76px; --tap: 44px; --gutter: 16px;
+  --nav: 52px; --tap: 44px; --gutter: 16px;
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
   color-scheme: dark;
 }
@@ -67,14 +67,19 @@ main { flex: 1; min-height: 0; position: relative; }
 .view { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; padding: 20px var(--gutter) 28px; -webkit-overflow-scrolling: touch; }
 .view::-webkit-scrollbar { display: none; }
 
+/* Like Instagram's: a 52px row hugging the bottom, then the home-indicator inset below it, so the icons
+   centre in the 52px rather than in the whole bar. It's the last flex child of the 100dvh body, so it
+   sits flush at the bottom (no fixed positioning, nothing scrolls under it). Hidden while typing. */
 .tabbar {
-  display: flex; flex-shrink: 0; background: var(--bg); border-top: 1px solid var(--surf2);
-  height: calc(var(--nav) + var(--safe-b)); padding-bottom: var(--safe-b);
+  display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: var(--nav); flex-shrink: 0;
+  background: var(--bg); border-top: 1px solid var(--surf2); padding-bottom: var(--safe-b);
 }
+body.typing .tabbar { display: none; }
 .tab-btn {
-  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
-  color: var(--muted); font-size: 11px; font-weight: 600; min-height: var(--tap); transition: color .2s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0;
+  color: var(--muted); font-size: 10px; font-weight: 600; line-height: 1.2; transition: color .2s;
 }
+.tab-btn > span:last-child { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab-btn[aria-current="page"] { color: var(--accent-ink); font-weight: 700; }
 .tab-icon { display: flex; }
 

@@ -160,7 +160,15 @@
      BOOT
      ════════════════════════════════════ */
   function wire() {
-    for (const b of util.$$('.tab-btn')) b.querySelector('.tab-icon').innerHTML = util.icon(b.dataset.view, 22);
+    for (const b of util.$$('.tab-btn')) b.querySelector('.tab-icon').innerHTML = util.icon(b.dataset.view, 24);
+    // While a text field in a view has focus (the iPhone keyboard is up) the tab bar hides, so it doesn't
+    // ride up on the keyboard. Re-checked a tick after focus moves (no flicker between fields) and after
+    // taps and keys, because a re-render can remove a focused field without any focusout.
+    const main = document.getElementById('main');
+    const isTextField = el => !!el && main.contains(el)
+      && el.matches('textarea, select, input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="button"])');
+    const syncTyping = () => document.body.classList.toggle('typing', isTextField(document.activeElement));
+    for (const type of ['focusin', 'focusout', 'click', 'keyup']) document.addEventListener(type, () => setTimeout(syncTyping), true);
     document.querySelector('.tabbar').addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
       if (btn) show(btn.dataset.view);
