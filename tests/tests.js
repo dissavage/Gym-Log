@@ -292,6 +292,61 @@
     });
   });
 
+  suite('Workout session', () => {
+    const ws = HL.session;   // ('session' above is the history-entry helper)
+    // An old template: per-slot `sets` counts, one exercise with a rep target and no history
+    const template = { name: 'Push', exercises: [
+      { exerciseId: 'bench', sets: 4, repMin: 6, repMax: 8 },
+      { exerciseId: 'dips', sets: 3, repMin: 10, repMax: 12 },
+      { exerciseId: 'fly', sets: 3 },
+    ] };
+    const last = { bench: [S(60, 10, 'warmup'), S(100, 6), S(100, 5)], fly: [S(15, 20, 'warmup'), S(20, 15, 'drop'), S(25, 12, 'failure')] };
+    const built = ws.fromTemplate(template, id => last[id]);
+    const one = ex => ex.sets[0];
+
+    test('a template start adds every exercise in order, one set each', () => {
+      assert.eq(built.map(ex => ex.exerciseId), ['bench', 'dips', 'fly']);
+      assert.eq(built.map(ex => ex.sets.length), [1, 1, 1]);
+      assert.ok(built.every(ex => one(ex).setType === 'working' && !one(ex).done));
+    });
+    test('prefill uses the first working set, skipping warm-ups', () =>
+      assert.eq([one(built[0]).weightKg, one(built[0]).reps], [100, 6]));
+    test('no working set last time: first non-warm-up set', () => assert.eq([one(built[2]).weightKg, one(built[2]).reps], [20, 15]));
+    test('no history: weight empty, reps from the template target', () => assert.eq([one(built[1]).weightKg, one(built[1]).reps], [null, 10]));
+    test('no history and no target: both empty', () => assert.eq([ws.firstSet(undefined).weightKg, ws.firstSet([]).reps], [null, null]));
+    test('history wins over the template target', () => assert.eq(ws.firstSet(last.bench, { repMin: 12 }).reps, 6));
+    test('old templates with sets still load and are not changed', () => {
+      assert.eq(template.exercises.map(s => s.sets), [4, 3, 3]);
+      assert.eq([built[0].repMin, built[0].repMax], [6, 8]);
+    });
+    test('missing exercises are skipped', () =>
+      assert.eq(ws.fromTemplate(template, () => [], id => id !== 'dips').map(ex => ex.exerciseId), ['bench', 'fly']));
+
+    test('only the first exercise is expanded on start', () => assert.eq(ws.focused(built, one(built[0]).id), built[0]));
+    test('finishing an exercise expands the next unfinished one', () => {
+      const exs = structuredClone(built);
+      exs[0].sets[0].done = true;
+      assert.eq(ws.focused(exs, exs[1].sets[0].id).key, exs[1].key);
+      assert.eq(ws.focused(exs, null).key, exs[1].key);
+    });
+    test('an exercise expanded by hand holds while it has the active set', () => {
+      assert.eq(ws.focused(built, one(built[2]).id, { key: built[2].key }), built[2]);
+      assert.eq(ws.focused(built, one(built[0]).id, { key: built[2].key }), built[0]);
+      assert.eq(ws.focused(built, one(built[0]).id, { key: null }), null);
+    });
+
+    test('skipped exercises are not saved', () => {
+      const exs = structuredClone(built);
+      exs[0].sets[0].done = true;
+      exs[2].sets.push({ ...exs[2].sets[0], id: 'x', done: true });
+      assert.eq(ws.skipped(exs).map(ex => ex.exerciseId), ['dips']);
+      const saved = ws.toSave(exs);
+      assert.eq(saved.map(ex => ex.exerciseId), ['bench', 'fly']);
+      assert.eq(saved.map(ex => ex.sets.length), [1, 1]);
+      assert.ok(saved.every(ex => !('key' in ex)), 'UI keys are not saved');
+    });
+  });
+
   /* ════════════════════════════════════
      TRENDS
      ════════════════════════════════════ */

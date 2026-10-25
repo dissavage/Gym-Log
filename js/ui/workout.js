@@ -6,7 +6,7 @@
 (function (HL) {
   'use strict';
 
-  const { util, units, domain, repo } = HL;
+  const { util, units, domain, repo, session } = HL;
   const { esc } = util;
 
   const DRAFT_ID = 'workout';
@@ -22,7 +22,7 @@
   let elapsedTimer = null;
   let swipe = null;
   let panelOpen = false;       // detail panel under the active set (UI only, not saved)
-  let focusOverride = null;    // exercise picked from a collapsed row
+  let expandPick = null;       // UI only: { key } expanded by hand ({ key: null } = all collapsed); null = default rule
   let suppressClickUntil = 0;
   let typing = null;           // weight/reps input cleared on focus: { el, setId, key, value }
 
@@ -38,10 +38,7 @@
     if (draft) draft = repo.put('drafts', draft);
   }
 
-  const newSet = (props = {}) => ({
-    id: util.uuid(), setType: 'working', weightKg: null, reps: null, rpe: null, rir: null,
-    restSec: null, done: false, completedAt: null, ...props,
-  });
+  const { newSet } = session;
 
   const findEx = key => draft.exercises.find(e => e.key === key);
 
@@ -73,19 +70,8 @@
 
   const lastSession = id => history(id).slice(-1)[0] || null;
 
-  // Same structure and numbers as last time, nothing ticked
-  function prefillSets(exerciseId) {
-    const last = lastSession(exerciseId);
-    if (last) return last.sets.map(s => newSet({ setType: s.setType, weightKg: s.weightKg, reps: s.reps }));
-    return [newSet()];
-  }
-
-  // A template slot only lends its rep target; the `sets` count older templates store is ignored
-  const exerciseSlot = (exerciseId, slot = {}) => ({
-    key: util.uuid(), exerciseId, notes: '',
-    repMin: slot.repMin ?? null, repMax: slot.repMax ?? null,
-    sets: prefillSets(exerciseId),
-  });
+  // One set, prefilled from the first working set last time (rules in session.js)
+  const exerciseSlot = (exerciseId, slot) => session.exerciseSlot(exerciseId, lastSession(exerciseId)?.sets, slot);
 
   const liveTemplate = id => { const t = id && repo.get('templates', id); return t && !t.deletedAt ? t : null; };
 
@@ -96,7 +82,7 @@
     draft = repo.make('draft', { id: DRAFT_ID, name: 'Workout', templateId: null, editingId: null, startedAt: util.localISO(), exercises: [], active: null, rest: null, ...props });
     draft.active = draft.exercises.flatMap(e => e.sets).find(s => !s.done)?.id || null;
     panelOpen = false;
-    focusOverride = null;
+    expandPick = null;
     saveDraft();
     render();
     if (viewEl) viewEl.scrollTop = 0;
@@ -106,10 +92,10 @@
     begin({ name: `${new Date().toLocaleDateString(undefined, { weekday: 'long' })} workout` });
   }
 
-  // Templates group sessions (Push, Pull…): the session starts blank and the
-  // template's exercises are offered at the top of the picker
+  // The template's exercises in order, one set each; the first one opens expanded
   function startTemplate(t) {
-    begin({ name: t.name, templateId: t.id });
+    const exercises = session.fromTemplate(t, id => lastSession(id)?.sets, id => !!repo.get('exercises', id));
+    begin({ name: t.name, templateId: t.id, exercises });
   }
 
   // Not reachable from the UI any more (kept for now)
@@ -193,18 +179,9 @@
       </section>`;
   }
 
-  /* ── Which exercise is in focus: the one holding the active set, else the first unfinished ── */
-  const isDoneEx = ex => ex.sets.length > 0 && ex.sets.every(s => s.done);
-
-  function focusedEx() {
-    if (focusOverride) {
-      const ex = findEx(focusOverride);
-      const activeEx = draft.active && findSet(draft.active)?.ex;
-      if (ex && (!activeEx || activeEx === ex)) return ex;
-    }
-    const byActive = draft.active && findSet(draft.active)?.ex;
-    return byActive || draft.exercises.find(ex => !isDoneEx(ex)) || draft.exercises[draft.exercises.length - 1] || null;
-  }
+  /* ── The one expanded exercise; every other one is a collapsed row ── */
+  const { isDoneEx } = session;
+  const focusedEx = () => session.focused(draft.exercises, draft.active, expandPick);
 
   const restLabel = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
@@ -232,10 +209,7 @@
 
   function bodyHtml() {
     if (!draft.exercises.length) {
-      const t = liveTemplate(draft.templateId);
-      return `<div class="empty-state"><strong>No exercises yet</strong>${t?.exercises.length
-        ? `Tap Add exercise — your ${esc(t.name)} exercises are at the top of the list.`
-        : 'Add your first exercise — sets fill in from last time automatically.'}</div>`;
+      return '<div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — it fills in from last time automatically.</div>';
     }
     const prefs = repo.getSettings().units;
     const focus = focusedEx();
@@ -257,7 +231,7 @@
     const sub = `${ex.sets.length} set${ex.sets.length === 1 ? '' : 's'}${best ? ` · best ${setText(best, prefs)}` : ''}`;
     return `
       <article class="wo-ex wo-row" data-ex="${ex.key}">
-        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-label="${esc(`${exercise.name}, done: ${sub}${pr ? ', personal record' : ''}. Show sets`)}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}, done: ${sub}${pr ? ', personal record' : ''}. Show sets`)}">
           <span class="wo-row-check" aria-hidden="true">${util.icon('check', 14)}</span>
           <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
           ${pr ? '<span class="pr-pill" aria-hidden="true">PR</span>' : ''}
@@ -274,7 +248,7 @@
     const sub = first ? `${left.length} × ${first.reps ?? '—'}${w}` : 'No sets yet';
     return `
       <article class="wo-ex wo-row" data-ex="${ex.key}">
-        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-label="${esc(`${exercise.name}: ${sub}. Start this exercise`)}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}: ${sub}. Start this exercise`)}">
           <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
           <span class="muted" aria-hidden="true">${util.icon('chev-right', 20)}</span>
         </button>
@@ -331,8 +305,8 @@
     const raw = set.weightKg != null ? units.display('mass', set.weightKg, prefs) : ''; // inputs get a plain number, no thousands separator
     const prevText = prev ? setText(prev, prefs) : '—';
     const values = active ? `
-      <input class="set-in" data-field="weight" inputmode="decimal" autocomplete="off" value="${raw}" placeholder="0" aria-label="${esc(`${label} weight (${unit})`)}">
-      <input class="set-in" data-field="reps" inputmode="numeric" autocomplete="off" value="${set.reps ?? ''}" placeholder="0" aria-label="${esc(`${label} reps`)}">` : `
+      <input class="set-in" data-field="weight" inputmode="decimal" autocomplete="off" value="${raw}" placeholder="—" aria-label="${esc(`${label} weight (${unit})`)}">
+      <input class="set-in" data-field="reps" inputmode="numeric" autocomplete="off" value="${set.reps ?? ''}" placeholder="—" aria-label="${esc(`${label} reps`)}">` : `
       <span class="set-cell" data-act="activate" data-cell="weight" aria-hidden="true">${w || '—'}</span>
       <span class="set-cell" data-act="activate" data-cell="reps" aria-hidden="true">${set.reps ?? '—'}</span>`;
     return `
@@ -358,14 +332,14 @@
         <div class="panel-row">
           <span class="panel-lbl" id="pw-${set.id}">Weight</span>
           <button type="button" class="stepper-btn" data-act="step" data-field="weight" data-dir="-1" aria-label="Less weight">−</button>
-          <div class="stepper-wrap"><input class="stepper-input" data-field="weight" inputmode="decimal" autocomplete="off" value="${w}" placeholder="0" aria-labelledby="pw-${set.id}">
+          <div class="stepper-wrap"><input class="stepper-input" data-field="weight" inputmode="decimal" autocomplete="off" value="${w}" placeholder="—" aria-labelledby="pw-${set.id}">
             <span class="stepper-unit">${units.label('mass', prefs)}</span></div>
           <button type="button" class="stepper-btn" data-act="step" data-field="weight" data-dir="1" aria-label="More weight">+</button>
         </div>
         <div class="panel-row">
           <span class="panel-lbl" id="pr-${set.id}">Reps</span>
           <button type="button" class="stepper-btn" data-act="step" data-field="reps" data-dir="-1" aria-label="One less rep">−</button>
-          <div class="stepper-wrap"><input class="stepper-input" data-field="reps" inputmode="numeric" autocomplete="off" value="${set.reps ?? ''}" placeholder="0" aria-labelledby="pr-${set.id}">
+          <div class="stepper-wrap"><input class="stepper-input" data-field="reps" inputmode="numeric" autocomplete="off" value="${set.reps ?? ''}" placeholder="—" aria-labelledby="pr-${set.id}">
             <span class="stepper-unit">reps</span></div>
           <button type="button" class="stepper-btn" data-act="step" data-field="reps" data-dir="1" aria-label="One more rep">+</button>
         </div>
@@ -413,9 +387,10 @@
     const doneN = all.filter(s => s.done).length;
     const focus = focusedEx();
     const pct = all.length ? Math.round((doneN / all.length) * 100) : 0;
-    el.textContent = draft.exercises.length
-      ? `Exercise ${draft.exercises.indexOf(focus) + 1} of ${draft.exercises.length} · ${doneN} of ${all.length} sets`
-      : 'No exercises yet';
+    // Counts the sets actually in the session (one per exercise to start, more as sets are added)
+    const n = draft.exercises.length;
+    el.textContent = !n ? 'No exercises yet'
+      : `${focus ? `Exercise ${draft.exercises.indexOf(focus) + 1} of ${n}` : `${n} exercise${n === 1 ? '' : 's'}`} · ${doneN} of ${all.length} set${all.length === 1 ? '' : 's'}`;
     viewEl.querySelector('[data-progress-pct]').textContent = `${pct}%`;
     viewEl.querySelector('[data-progress-fill]').style.width = `${pct}%`;
   }
@@ -480,11 +455,8 @@
     saveDraft();
     HL.rest.start(restSec);
     renderBody();
-    // Finished this exercise: bring the next one into view
-    if (focusedEx() !== focusBefore) {
-      const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      viewEl.querySelector('.wo-focus')?.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
-    }
+    // Finished this exercise: it collapses and the next one opens, scrolled into view
+    if (focusedEx() !== focusBefore) scrollToView(viewEl.querySelector('.wo-focus'), 'start');
     if (prs.length) HL.toast(`🏆 ${prs.map(p => PR_LABEL[p]).join(' + ')} — ${exercise.name} ${domain.formatSet(set, repo.getSettings().units)}`, { duration: 4500 });
   }
 
@@ -498,19 +470,22 @@
       panelOpen = false;
       saveDraft();
     }
-    focusOverride = null;
+    expandPick = null;
     renderBody();
   }
 
-  // Tapping a collapsed exercise row brings it into focus
-  function focusExercise(key) {
-    const ex = findEx(key);
-    if (!ex) return;
-    draft.active = (ex.sets.find(s => !s.done) || ex.sets[0])?.id || null;
-    focusOverride = key;
+  const scrollToView = (el, block) => el?.scrollIntoView({ block, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+
+  // The one expand/collapse path: expands `key` (collapsing the others) with its first unticked set
+  // active, or collapses everything when `key` is null. Collapsed rows call it; so can an exercise name.
+  function setExpanded(key) {
+    const ex = key && findEx(key);
+    expandPick = { key: ex ? key : null };
+    if (ex) draft.active = (ex.sets.find(s => !s.done) || ex.sets[0])?.id || null;
     panelOpen = false;
     saveDraft();
     renderBody();
+    if (!ex) return;
     viewEl.querySelector('.wo-focus [data-act="toggle-done"]')?.focus({ preventScroll: true });
     viewEl.querySelector('.wo-focus')?.scrollIntoView({ block: 'nearest' });
   }
@@ -594,9 +569,13 @@
       onPick: exercise => {
         const slot = exerciseSlot(exercise.id, slots.get(exercise.id));
         draft.exercises.push(slot);
-        if (!draft.active) draft.active = slot.sets.find(s => !s.done)?.id || null;
+        // The new exercise opens with its one set ready to edit
+        draft.active = slot.sets[0].id;
+        expandPick = null;
+        panelOpen = false;
         saveDraft();
         render();
+        scrollToView(viewEl.querySelector(`[data-set="${draft.active}"]`), 'center');
         HL.toast(`${exercise.name} added`);
       },
     });
@@ -730,7 +709,10 @@
   function openFinish() {
     const prefs = repo.getSettings().units;
     const editing = !!draft.editingId;
-    const unticked = draft.exercises.flatMap(e => e.sets).filter(s => !s.done && s.reps > 0);
+    // Nothing ticked: the exercise is left out. Some ticked: the unticked sets with reps can be ticked here.
+    const skipped = session.skipped(draft.exercises);
+    const unticked = draft.exercises.filter(ex => !skipped.includes(ex)).flatMap(e => e.sets).filter(s => !s.done && s.reps > 0);
+    const skippedNames = new Intl.ListFormat('en', { type: 'conjunction' }).format(skipped.map(ex => exerciseOf(ex).name));
     const sum = domain.workoutSummary(draft);
     const mins = Math.round((Date.now() - Date.parse(draft.startedAt)) / 60000);
     const prs = [];
@@ -751,10 +733,12 @@
         <div class="stat"><span class="stat-lbl">Volume</span><span class="stat-val">${esc(units.format('mass', sum.volume, prefs, 0))}</span></div>
       </div>
       ${prs.length ? `<h3 class="section-label section-gap">Personal records</h3><ul class="pr-list">${prs.join('')}</ul>` : ''}
-      ${unticked.length ? `
+      ${skipped.length || unticked.length ? `
         <div class="notice" role="note">
+          ${skipped.length ? `<p>${util.icon('alert', 18)}<span>${esc(skippedNames)} ${skipped.length === 1 ? 'wasn’t' : 'weren’t'} done and won’t be saved.</span></p>` : ''}
+          ${unticked.length ? `
           <p>${util.icon('alert', 18)}<span>${unticked.length} set${unticked.length === 1 ? ' isn’t' : 's aren’t'} ticked off and won’t be saved.</span></p>
-          <button type="button" class="btn btn-ghost btn-sm" data-act="tick-all">Tick ${unticked.length === 1 ? 'it' : 'them all'} done</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="tick-all">Tick ${unticked.length === 1 ? 'it' : 'them all'} done</button>` : ''}
         </div>` : ''}
       <div class="field"><label class="field-label" for="wo-name">Name</label>
         <input class="input" id="wo-name" name="name" value="${esc(draft.name)}"></div>
@@ -799,12 +783,7 @@
   }
 
   function saveWorkout(asTemplate, prCount) {
-    const exercises = draft.exercises
-      .map(ex => ({
-        exerciseId: ex.exerciseId, notes: ex.notes || '', repMin: ex.repMin ?? null, repMax: ex.repMax ?? null,
-        sets: ex.sets.filter(s => s.done).map(s => ({ ...s })),
-      }))
-      .filter(ex => ex.sets.length);
+    const exercises = session.toSave(draft.exercises);
     const existing = draft.editingId ? repo.get('entries', draft.editingId) : null;
     const endedAt = existing?.values.endedAt || util.localISO();
     const values = {
@@ -949,7 +928,7 @@
     const template = el.dataset.id && repo.get('templates', el.dataset.id);
     switch (act) {
       case 'back':            HL.app.show('today'); break;
-      case 'focus-ex':        focusExercise(key); break;
+      case 'focus-ex':        setExpanded(key); break;
       case 'start-empty':     startEmpty(); break;
       case 'start-template':  startTemplate(template); break;
       case 'edit-template':   openTemplateEditor(template); break;
