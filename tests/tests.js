@@ -284,6 +284,13 @@
     test('sessions are oldest first', () => assert.eq(idx.get('bench').map(s => s.entryId), ['a', 'b', 'c']));
     test('only ticked sets are kept', () => assert.eq(idx.get('bench')[0].sets.length, 1));
     test('same exercise twice in one workout merges into one session', () => assert.eq(idx.get('bench')[2].sets.length, 2));
+    test('each session carries its exercise note; old data without one gives ""', () => {
+      const withNotes = domain.exerciseIndex([
+        wo('n', '2026-10-09T10:00:00.000-07:00', [{ exerciseId: 'bench', notes: 'Seat 4', sets: [S(100, 5)] }, { exerciseId: 'bench', notes: 'Grip wider', sets: [S(100, 5)] }]),
+      ]);
+      assert.eq(withNotes.get('bench')[0].notes, 'Seat 4\nGrip wider');
+      assert.eq(idx.get('bench').map(s => s.notes), ['', '', '']);
+    });
     test('matchingSet pairs by type and position', () => {
       const last = [S(60, 10, 'warmup'), S(100, 8), S(100, 7), S(80, 10, 'drop')];
       assert.eq(domain.matchingSet(last, 'working', 1).reps, 7);
@@ -359,6 +366,11 @@
       assert.eq(saved.map(ex => ex.exerciseId), ['bench', 'fly']);
       assert.eq(saved.map(ex => ex.sets.length), [1, 1]);
       assert.ok(saved.every(ex => !('key' in ex)), 'UI keys are not saved');
+    });
+    test('exercise notes are saved trimmed; old exercises without notes save ""', () => {
+      const done = { id: 'd', setType: 'working', weightKg: 50, reps: 5, done: true };
+      const saved = ws.toSave([{ exerciseId: 'a', notes: '  Seat 4 \n', sets: [done] }, { exerciseId: 'b', sets: [done] }]);
+      assert.eq(saved.map(ex => ex.notes), ['Seat 4', '']);
     });
   });
 
@@ -529,6 +541,13 @@
       assert.eq(diff.add.map(x => x.record.id).sort(), ['a', 'b']);
       assert.eq(diff.add.find(x => x.record.id === 'b').record.deletedAt, '2026-10-03T00:00:00Z');
     });
+    test('workout and exercise notes round-trip through backup and restore', () => {
+      const w = { id: 'w', type: 'workout', updatedAt: '2026-10-05T00:00:00Z', timestamp: '2026-10-05T18:00:00.000-07:00', dayKey: '2026-10-05',
+        notes: 'Slept badly, still PR’d', values: { name: 'Push', templateId: null, exercises: [{ exerciseId: 'bench', notes: 'Seat 4\nGrip wider', sets: [S(100, 5)] }] } };
+      const v = backup.validateBackup(JSON.parse(JSON.stringify(backup.buildBackup({ entries: [w] }, {}))));
+      const back = backup.diffImport({}, v.snapshot.stores).add.find(x => x.record.id === 'w').record;
+      assert.eq([back.notes, back.values.exercises[0].notes], ['Slept badly, still PR’d', 'Seat 4\nGrip wider']);
+    });
     test('re-importing the same file adds nothing', () => {
       const diff = backup.diffImport(stores, backup.validateBackup(file).snapshot.stores);
       assert.eq([diff.add.length, diff.update.length, diff.duplicates], [0, 0, 2]);
@@ -575,7 +594,7 @@
       const csv = backup.trackerCSV(t, [{ dayKey: '2026-10-01', timestamp: '2026-10-01T18:00:00.000-07:00', values: { name: 'Push', exercises: [{ exerciseId: 'bench', sets: [S(100, 5), S(60, 10, 'warmup')] }] } }], metric, id => id.toUpperCase());
       const rows = csv.split('\r\n');
       assert.eq(rows.length, 3);
-      assert.eq(rows[1], '2026-10-01,18:00,Push,BENCH,1,working,100,5,,,116.7,');
+      assert.eq(rows[1], '2026-10-01,18:00,Push,BENCH,1,working,100,5,,,116.7,,');
     });
   });
 

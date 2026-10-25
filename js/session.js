@@ -57,7 +57,7 @@
   function toSave(exercises) {
     return exercises
       .map(ex => ({
-        exerciseId: ex.exerciseId, notes: ex.notes || '', repMin: ex.repMin ?? null, repMax: ex.repMax ?? null,
+        exerciseId: ex.exerciseId, notes: (ex.notes || '').trim(), repMin: ex.repMin ?? null, repMax: ex.repMax ?? null,
         sets: ex.sets.filter(s => s.done).map(s => ({ ...s })),
       }))
       .filter(ex => ex.sets.length);

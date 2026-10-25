@@ -239,6 +239,7 @@ fieldset { border: none; min-width: 0; }
 .log-main { flex: 1; min-width: 0; }
 .log-name { display: block; font-size: 14px; font-weight: 700; }
 .log-sum { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-note { display: block; font-size: 12px; color: var(--text); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .log-time { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 
 /* ════════════════════════════════════
@@ -430,12 +431,33 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .wo-ex-name { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; text-transform: uppercase; }
 .wo-ex-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .wo-focus .icon-btn { background: transparent; }
-.wo-last { font-size: 12px; color: var(--muted); background: var(--surf2); border-radius: 8px; padding: 8px 10px; }
-.wo-notes { font-size: 12px; color: var(--text); }
+.wo-last { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); background: var(--surf2); border-radius: 8px; padding: 8px 10px; }
+.wo-last-btn { position: relative; min-height: 32px; margin: -6px -4px; flex-shrink: 0; }
+.wo-last-btn::after { content: ''; position: absolute; inset: -6px 0; }   /* 44px to tap without a taller strip */
+.wo-last-note { font-size: 13px; color: var(--text); white-space: pre-wrap; border-left: 2px solid var(--border-strong); padding: 0 0 0 10px; margin-top: -4px; }
+
+/* Notes (each exercise, and the workout): one 44px row collapsed, an auto-growing textarea open */
+.wo-note { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tap); padding: 0 2px; text-align: left; font-size: 14px; color: var(--muted); border-radius: 8px; }
+.wo-note > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wo-note .ico { flex-shrink: 0; color: var(--muted); }
+.wo-note.has-note { color: var(--text); }
+.wo-note.full { align-items: flex-start; padding-top: 12px; padding-bottom: 12px; }
+.wo-note.full > span { white-space: pre-wrap; overflow: visible; }
+.wo-note-edit { display: flex; flex-direction: column; }
+.wo-note-in {
+  width: 100%; min-height: 64px; resize: none; overflow: hidden; padding: 10px 12px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border-strong); font-size: max(16px, 1rem); line-height: 1.4; color: var(--text);
+}
+.wo-note-in:focus { border-color: var(--accent-ink); }
+.wo-note-in::placeholder { color: var(--faint); }
+.wo-note-done { align-self: flex-end; }
+.wo-session-note { background: var(--surf); border: 1px solid var(--border); border-radius: 14px; padding: 0 12px; }
+.wo-session-note .wo-note-edit { padding: 12px 0 0; }
+.wo-row-note { flex-shrink: 0; display: flex; color: var(--muted); }
 .wo-discard { text-align: center; margin-top: 10px; }
 .wo-discard .link-btn { color: var(--red-ink); }
 .wo-add-ex { min-height: 48px; }
-.wo-list.reordering .wo-group-lbl { display: none; }
+.wo-list.reordering .wo-group-lbl, .wo-list.reordering .wo-session-note { display: none; }
 .wo-list.reordering .wo-focus > :not(.wo-ex-hdr) { display: none; }
 .wo-list.reordering .wo-focus { padding: 6px 14px; border-radius: 14px; }
 .wo-list.reordering .wo-ex-name { font-size: 20px; }

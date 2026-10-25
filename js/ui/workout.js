@@ -26,6 +26,9 @@
   let suppressClickUntil = 0;
   let typing = null;           // weight/reps input cleared on focus: { el, setId, key, value }
   let naming = null;           // UI only: while the header's name input is open, the name to fall back to
+  const notesOpen = new Set();     // UI only: exercise keys (and 'session') whose note editor is open
+  const lastNoteOpen = new Set();  // UI only: exercise keys showing last time's note
+  const saveSoon = util.debounce(() => saveDraft(), 300);   // note typing
 
   /* ════════════════════════════════════
      DRAFT
@@ -122,7 +125,7 @@
     if (!draft) {
       draft = repo.make('draft', {
         id: DRAFT_ID, name: entry.values.name || 'Workout', templateId: entry.values.templateId || null,
-        editingId: entry.id, startedAt: entry.values.startedAt || entry.timestamp, active: null, rest: null,
+        editingId: entry.id, startedAt: entry.values.startedAt || entry.timestamp, active: null, rest: null, notes: entry.notes || '',
         exercises: structuredClone(entry.values.exercises || []).map(ex => ({ ...ex, key: util.uuid() })),
       });
       saveDraft();
@@ -142,6 +145,7 @@
     typing = null;
     if (!draft) { naming = null; el.innerHTML = startHtml(); return; }
     el.innerHTML = activeHtml();
+    util.$$('[data-note]', el).forEach(sizeNote);
     updateProgress();
     HL.rest.sync();
     tickElapsed();
@@ -222,9 +226,32 @@
       <p class="wo-discard"><button type="button" class="link-btn" data-act="discard">${editing ? 'Cancel editing' : 'Discard workout'}</button></p>`;
   }
 
+  /**
+   * A note, collapsed to one 44px row (pencil + "Add note", or its first line) or, once tapped, an
+   * auto-growing textarea with Done. id is an exercise key or 'session'; `full` shows every line collapsed.
+   */
+  function noteHtml(id, text, { label, placeholder, full = false }) {
+    if (notesOpen.has(id)) {
+      return `<div class="wo-note-edit">
+          <label class="sr-only" for="note-${id}">${esc(label)}</label>
+          <textarea class="wo-note-in" id="note-${id}" data-note="${id}" rows="2" placeholder="${esc(placeholder)}">${esc(text)}</textarea>
+          <button type="button" class="link-btn wo-note-done" data-act="note-done" data-note-id="${id}" aria-expanded="true" aria-controls="note-${id}">Done</button>
+        </div>`;
+    }
+    const shown = full ? text : text.split('\n')[0];
+    return `<button type="button" class="wo-note${text ? ' has-note' : ''}${full ? ' full' : ''}" data-act="note-open" data-note-id="${id}" aria-expanded="false"
+        aria-label="${esc(text ? `${label}: ${text}. Edit` : label)}">${util.icon('pencil', 16)}<span>${esc(shown || label)}</span></button>`;
+  }
+
+  // The workout's own note, above "+ Add exercise"; shown in full when editing a saved workout
+  const sessionNoteHtml = () => `<div class="wo-session-note">${noteHtml('session', draft.notes || '',
+    { label: 'Add workout note', placeholder: 'How it went: sleep, energy, anything to remember', full: !!draft.editingId })}</div>`;
+
+  const sizeNote = ta => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+
   function bodyHtml() {
     if (!draft.exercises.length) {
-      return '<div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — it fills in from last time automatically.</div>';
+      return `<div class="empty-state"><strong>No exercises yet</strong>Add your first exercise — it fills in from last time automatically.</div>${sessionNoteHtml()}`;
     }
     const prefs = repo.getSettings().units;
     const focus = focusedEx();
@@ -233,8 +260,12 @@
     return `
       ${done.length ? `<h2 class="section-label wo-group-lbl">Done</h2>${done.map(ex => doneRowHtml(ex, prefs)).join('')}` : ''}
       ${focus ? focusedHtml(focus, prefs) : ''}
-      ${next.length ? `<h2 class="section-label wo-group-lbl">Up next</h2>${next.map(ex => nextRowHtml(ex, prefs)).join('')}` : ''}`;
+      ${next.length ? `<h2 class="section-label wo-group-lbl">Up next</h2>${next.map(ex => nextRowHtml(ex, prefs)).join('')}` : ''}
+      ${sessionNoteHtml()}`;
   }
+
+  // Collapsed rows only hint that a note exists
+  const rowNoteIcon = ex => (ex.notes ? `<span class="wo-row-note" aria-hidden="true">${util.icon('file', 16)}</span>` : '');
 
   const exerciseOf = ex => repo.get('exercises', ex.exerciseId) || { name: 'Unknown exercise', primary: [] };
 
@@ -246,10 +277,10 @@
     const sub = `${ex.sets.length} set${ex.sets.length === 1 ? '' : 's'}${best ? ` · best ${setText(best, prefs)}` : ''}`;
     return `
       <article class="wo-ex wo-row" data-ex="${ex.key}">
-        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}, done: ${sub}${pr ? ', personal record' : ''}. Show sets`)}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}, done: ${sub}${pr ? ', personal record' : ''}${ex.notes ? ', has a note' : ''}. Show sets`)}">
           <span class="wo-row-check" aria-hidden="true">${util.icon('check', 14)}</span>
           <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
-          ${pr ? '<span class="pr-pill" aria-hidden="true">PR</span>' : ''}
+          ${rowNoteIcon(ex)}${pr ? '<span class="pr-pill" aria-hidden="true">PR</span>' : ''}
           <span class="muted" aria-hidden="true">${util.icon('chev-down', 20)}</span>
         </button>
       </article>`;
@@ -263,8 +294,9 @@
     const sub = first ? `${left.length} × ${first.reps ?? '—'}${w}` : 'No sets yet';
     return `
       <article class="wo-ex wo-row" data-ex="${ex.key}">
-        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}: ${sub}. Start this exercise`)}">
+        <button type="button" class="wo-row-btn" data-act="focus-ex" aria-expanded="false" aria-label="${esc(`${exercise.name}: ${sub}${ex.notes ? ', has a note' : ''}. Start this exercise`)}">
           <span class="grow"><span class="wo-row-name">${esc(exercise.name)}</span><span class="wo-row-sub">${esc(sub)}</span></span>
+          ${rowNoteIcon(ex)}
           <span class="muted" aria-hidden="true">${util.icon('chev-right', 20)}</span>
         </button>
       </article>`;
@@ -298,10 +330,12 @@
           </div>
           <button type="button" class="icon-btn" data-act="ex-menu" aria-label="Options for ${esc(exercise.name)}">${util.icon('dots', 22)}</button>
         </header>
-        <p class="wo-last">${last
+        ${noteHtml(ex.key, ex.notes || '', { label: 'Add note', placeholder: 'Seat height 4, felt strong…' })}
+        <div class="wo-last"><span>${last
           ? `Last · ${esc(util.fmtDay(last.dayKey, { month: 'short', day: 'numeric' }))}: ${esc(last.sets.map(s => domain.formatSet(s, prefs)).join(', '))}`
-          : 'First time — no history yet'}</p>
-        ${ex.notes ? `<p class="wo-notes">📝 ${esc(ex.notes)}</p>` : ''}
+          : 'First time — no history yet'}</span>${last?.notes
+          ? `<button type="button" class="link-btn wo-last-btn" data-act="last-note" aria-expanded="${lastNoteOpen.has(ex.key)}" aria-controls="ln-${ex.key}">Note</button>` : ''}</div>
+        ${last?.notes && lastNoteOpen.has(ex.key) ? `<p class="wo-last-note" id="ln-${ex.key}">${esc(last.notes)}</p>` : ''}
         <div class="set-head" aria-hidden="true"><span>Set</span><span>Previous</span><span>${esc(units.label('mass', prefs))}</span><span>Reps</span><span></span></div>
         <ol class="set-list">${rows}</ol>
         <button type="button" class="btn btn-dashed btn-block wo-add-set" data-act="add-set">${util.icon('plus', 16)} Add set</button>
@@ -385,10 +419,12 @@
       const id = holder?.dataset.set || holder?.dataset.panel;
       if (a.dataset.act || a.dataset.field) {
         focusSel = `${id ? `[data-set="${id}"] ` : holder?.dataset.ex ? `[data-ex="${holder.dataset.ex}"] ` : ''}${a.dataset.act ? `[data-act="${a.dataset.act}"]` : `[data-field="${a.dataset.field}"]`}`;
+        if (a.dataset.noteId) focusSel += `[data-note-id="${a.dataset.noteId}"]`;
       }
     }
     typing = null;   // the cleared input is about to be replaced (re-focusing it below clears it again)
     list.innerHTML = bodyHtml();
+    util.$$('[data-note]', list).forEach(sizeNote);
     updateProgress();
     if (!focusSel) return;
     const target = list.querySelector(focusSel) || (draft.active && list.querySelector(`[data-set="${draft.active}"] [data-act="toggle-done"]`));
@@ -486,6 +522,28 @@
       saveDraft();
     }
     expandPick = null;
+    renderBody();
+  }
+
+  /* ── Notes: open in place, typed straight into the draft, saved debounced ── */
+  function openNote(id) {
+    notesOpen.add(id);
+    renderBody();
+    const ta = viewEl.querySelector(`[data-note="${id}"]`);
+    if (!ta) return;
+    ta.focus();   // still inside the tap, so iOS opens the keyboard
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  function closeNote(id) {
+    notesOpen.delete(id);
+    saveDraft();
+    renderBody();
+    viewEl.querySelector(`[data-act="note-open"][data-note-id="${id}"]`)?.focus({ preventScroll: true });
+  }
+
+  function toggleLastNote(key) {
+    lastNoteOpen.has(key) ? lastNoteOpen.delete(key) : lastNoteOpen.add(key);
     renderBody();
   }
 
@@ -635,12 +693,7 @@
           <button type="button" class="menu-item" data-m="down" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>${util.icon('arrow-down', 18)} Move down</button>
           <button type="button" class="menu-item" data-m="settings">${util.icon('pencil', 18)} Rest time, rep target &amp; muscles</button>
           <button type="button" class="menu-item danger" data-m="remove">${util.icon('close', 18)} Remove from workout</button>
-        </div>
-        <div class="field block-top">
-          <label class="field-label" for="ex-notes">Notes for this workout</label>
-          <textarea class="input" id="ex-notes" name="notes" placeholder="Seat height 4, felt strong…">${esc(ex.notes || '')}</textarea>
         </div>`,
-      footer: '<button type="submit" class="btn btn-primary">Save notes</button>',
       onMount: api => api.form.addEventListener('click', e => {
         const m = e.target.closest('[data-m]')?.dataset.m;
         if (!m) return;
@@ -650,12 +703,6 @@
         if (m === 'remove') removeExercise(key);
         if (m === 'settings' && exercise) HL.exercises.edit(exercise, { onSave: () => render() });
       }),
-      onSubmit: (form, api) => {
-        ex.notes = form.elements.notes.value.trim();
-        saveDraft();
-        api.close();
-        renderBody();
-      },
     });
   }
 
@@ -767,6 +814,8 @@
         </div>` : ''}
       <div class="field"><label class="field-label" for="wo-name">Name</label>
         <input class="input" id="wo-name" name="name" value="${esc(draft.name)}"></div>
+      <div class="field"><label class="field-label" for="wo-notes">Workout note</label>
+        <textarea class="input" id="wo-notes" name="notes" placeholder="How it went: sleep, energy, anything to remember">${esc(draft.notes || '')}</textarea></div>
       ${!draft.templateId && !editing ? '<label class="check-inline"><input type="checkbox" name="asTemplate"> Save as a template</label>' : ''}
       ${editing ? '<button type="button" class="btn btn-danger btn-block block-top" data-act="delete-entry">Delete this workout</button>' : ''}
       <p class="field-hint" id="fin-err" role="alert"></p>`;
@@ -779,6 +828,9 @@
         const act = e.target.closest('[data-act]')?.dataset.act;
         if (act === 'keep') api.close();
         if (act === 'tick-all') {
+          // The sheet reopens: keep what was typed in it
+          draft.name = api.form.elements.name.value.trim() || draft.name;
+          draft.notes = api.form.elements.notes.value;
           const now = util.localISO();
           for (const s of unticked) Object.assign(s, { done: true, completedAt: s.completedAt || now });
           saveDraft();
@@ -800,6 +852,7 @@
           return;
         }
         draft.name = form.elements.name.value.trim() || draft.name;
+        draft.notes = form.elements.notes.value;
         const asTemplate = form.elements.asTemplate?.checked;
         api.close();
         saveWorkout(asTemplate, prs.length);
@@ -816,8 +869,10 @@
       durationMin: existing?.values.durationMin ?? Math.max(1, Math.round((Date.parse(endedAt) - Date.parse(draft.startedAt)) / 60000)),
       exercises,
     };
-    if (existing) repo.put('entries', { ...existing, values });
-    else repo.put('entries', repo.newEntry('workout', values, { when: draft.startedAt }));
+    // The workout's note is the entry's own top-level notes field (every entry has one)
+    const notes = (draft.notes || '').trim();
+    if (existing) repo.put('entries', { ...existing, values, notes });
+    else repo.put('entries', repo.newEntry('workout', values, { when: draft.startedAt, notes }));
 
     if (asTemplate) {
       repo.put('templates', repo.make('template', {
@@ -980,6 +1035,9 @@
     switch (act) {
       case 'back':            HL.app.show('today'); break;
       case 'focus-ex':        setExpanded(key); break;
+      case 'note-open':       openNote(el.dataset.noteId); break;
+      case 'note-done':       closeNote(el.dataset.noteId); break;
+      case 'last-note':       toggleLastNote(key); break;
       case 'start-empty':     startEmpty(); focusName(); break;
       case 'start-template':  startTemplate(template); break;
       case 'edit-template':   openTemplateEditor(template); break;
@@ -1000,6 +1058,14 @@
   }
 
   function onInput(e) {
+    const noteId = e.target.dataset.note;
+    if (noteId) {
+      if (noteId === 'session') draft.notes = e.target.value;
+      else if (findEx(noteId)) findEx(noteId).notes = e.target.value;
+      sizeNote(e.target);
+      saveSoon();
+      return;
+    }
     const field = e.target.dataset.field;
     const holder = e.target.closest('[data-set], [data-panel]');
     if (!field || !holder) return;
@@ -1031,6 +1097,7 @@
   function onFocusOut(e) {
     const el = e.target;
     if (el.matches('[data-rename-input]')) { commitName(true); return; }
+    if (el.dataset.note) { saveDraft(); return; }   // don't leave a note waiting on the debounce
     if (el !== typing?.el) return;
     if (el.value === '') el.value = el.dataset.prev;
     el.placeholder = el.dataset.ph;
@@ -1069,6 +1136,10 @@
     el.addEventListener('focusin', onFocusIn);
     el.addEventListener('focusout', onFocusOut);
     el.addEventListener('keydown', onKeyDown);
+    // Leaving the app mid-note: save now rather than after the debounce
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && draft) { saveDraft(); repo.flush(); }
+    });
   }
 
   HL.views = HL.views || {};

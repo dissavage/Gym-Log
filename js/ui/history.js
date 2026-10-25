@@ -104,7 +104,8 @@
       <li><button type="button" class="log-row${wo ? ' is-workout' : ''}" data-edit="${e.id}">
         <span class="icon-sq" aria-hidden="true">${util.trackerIcon(t, 18)}</span>
         <span class="log-main"><span class="log-name">${esc(title)}</span>
-          <span class="log-sum">${esc(sum || 'No values')}</span></span>
+          <span class="log-sum">${esc(sum || 'No values')}</span>
+          ${wo && e.notes ? `<span class="log-note">${esc(e.notes.split('\n')[0])}</span>` : ''}</span>
         <span class="log-time">${esc(util.fmtTime(e.timestamp))}</span>
       </button></li>`;
   }

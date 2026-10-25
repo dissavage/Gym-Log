@@ -205,7 +205,7 @@
   const isWorkingSet = s => !!s.done && (s.setType === 'working' || s.setType === 'failure');
   const sessionVolume = sets => sets.filter(countsForPR).reduce((a, s) => a + (s.weightKg || 0) * s.reps, 0);
 
-  // exerciseId → [{ entryId, timestamp, dayKey, sets }] oldest first (done sets only)
+  // exerciseId → [{ entryId, timestamp, dayKey, sets, notes }] oldest first (done sets only)
   function exerciseIndex(workoutEntries) {
     const idx = new Map();
     const sorted = [...workoutEntries].sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
@@ -215,8 +215,8 @@
       if (!idx.has(ex.exerciseId)) idx.set(ex.exerciseId, []);
       const list = idx.get(ex.exerciseId);
       const prev = list[list.length - 1];
-      if (prev && prev.entryId === e.id) prev.sets = prev.sets.concat(sets);
-      else list.push({ entryId: e.id, timestamp: e.timestamp, dayKey: e.dayKey, sets });
+      if (prev && prev.entryId === e.id) { prev.sets = prev.sets.concat(sets); prev.notes = [prev.notes, ex.notes].filter(Boolean).join('\n'); }
+      else list.push({ entryId: e.id, timestamp: e.timestamp, dayKey: e.dayKey, sets, notes: ex.notes || '' });
     }
     return idx;
   }

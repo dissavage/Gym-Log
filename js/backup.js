@@ -125,14 +125,14 @@
     const sorted = [...entries].filter(e => !e.deletedAt).sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
     if (tracker.kind === 'workout') {
       const w = units.label('mass', prefs);
-      const rows = [csvLine(['date', 'time', 'workout', 'exercise', 'set', 'set type', `weight (${w})`, 'reps', 'rpe', 'rir', 'est 1rm (' + w + ')', 'notes'])];
+      const rows = [csvLine(['date', 'time', 'workout', 'exercise', 'set', 'set type', `weight (${w})`, 'reps', 'rpe', 'rir', 'est 1rm (' + w + ')', 'notes', 'workout notes'])];
       for (const e of sorted) {
         for (const ex of e.values.exercises || []) {
           ex.sets.forEach((s, i) => {
             const est = domain.e1rm(s.weightKg || 0, s.reps);
             rows.push(csvLine([e.dayKey, util.toInputDateTime(e.timestamp).slice(11), e.values.name, exerciseName(ex.exerciseId), i + 1, s.setType,
               s.weightKg != null ? units.display('mass', s.weightKg, prefs, 2) : '', s.reps, s.rpe, s.rir,
-              est ? units.display('mass', est, prefs, 1) : '', ex.notes || '']));
+              est ? units.display('mass', est, prefs, 1) : '', ex.notes || '', e.notes || '']));
           });
         }
       }
