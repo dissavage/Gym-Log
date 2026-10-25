@@ -360,13 +360,9 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 /* ════════════════════════════════════
    WORKOUT
    ════════════════════════════════════ */
-.wo-repeat { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 64px; }
-.wo-repeat { margin-top: 10px; padding: 12px 14px; background: var(--surf); border: 1px solid var(--border); border-radius: 16px; }
-.wo-repeat:active, .tpl-main:active { background: var(--surf2); }
-.wo-repeat > .ico { color: var(--muted); }
+.tpl-main:active { background: var(--surf2); }
 .icon-sq-lg { width: 40px; height: 40px; border-radius: 12px; }
-.wo-repeat-title { display: block; font-size: 15px; font-weight: 700; }
-.wo-repeat-sub, .tpl-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tpl-sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .tpl-card { display: flex; align-items: center; gap: 8px; background: var(--surf); border: 1px solid var(--border); border-radius: 16px; padding: 8px 8px 8px 14px; margin-bottom: 10px; }
 .tpl-card.is-next { border-color: var(--accent-ink); }
 .tpl-main { flex: 1; min-width: 0; min-height: 60px; padding: 6px 0; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; text-align: left; }
@@ -442,7 +438,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
   font-size: 16px; font-weight: 700; text-align: center; -moz-appearance: textfield;
 }
 .set-in:focus { border-color: var(--accent); }
-.set-in::placeholder, .stepper-input::placeholder { color: var(--faint); opacity: 1; }
+.set-in::placeholder, .stepper-input::placeholder { color: var(--muted); opacity: 1; }   /* the old number while retyping: ≥ 6:1 on --bg in both themes */
 .set-check { width: 40px; height: 40px; justify-self: center; border-radius: 10px; border: 2px solid var(--dash); color: var(--muted); display: flex; align-items: center; justify-content: center; }
 .set-check[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .wo-add-set { min-height: var(--tap); border-width: 1px; border-radius: 12px; }

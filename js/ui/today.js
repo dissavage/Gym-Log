@@ -97,13 +97,11 @@
         `${sets.filter(s => s.done).length}/${sets.length} sets${mins != null ? ` · ${mins} min` : ''}`,
         `<button type="button" class="btn btn-primary btn-block" data-act="resume">${util.icon('play', 18)} Resume workout</button>`, []);
     }
-    const last = repo.lastEntry('workout');
-    const repeat = last ? `<button type="button" class="btn btn-ghost" data-act="repeat-last"><span>Repeat last (${esc(last.values.name || 'Workout')})</span></button>` : '';
     const next = HL.workout.nextTemplate();
     if (!next) {
       return upNextCard('Up next', '', 'No templates yet', 'Save your usual routines as templates to start them from here.',
         `<button type="button" class="btn btn-primary btn-block" data-act="start-empty">${util.icon('play', 18)} Start empty workout</button>`,
-        [repeat || '<button type="button" class="btn btn-ghost" data-act="other-templates">Templates</button>']);
+        ['<button type="button" class="btn btn-ghost" data-act="other-templates">Templates</button>']);
     }
     const lastOfThis = repo.entries({ type: 'workout' }).find(e => e.values.templateId === next.id);
     const slots = next.exercises.filter(s => repo.get('exercises', s.exerciseId));
@@ -112,7 +110,7 @@
     const sub = [`${slots.length} exercise${slots.length === 1 ? '' : 's'}`, `${totalSets} set${totalSets === 1 ? '' : 's'}`, HL.exercises.muscleNames(muscles)].filter(Boolean).join(' · ');
     return upNextCard('Up next', lastOfThis ? `Last done ${shortDay(lastOfThis.dayKey)}` : 'Not done yet', next.name, sub,
       `<button type="button" class="btn btn-primary btn-block" data-act="start-next" data-id="${next.id}">${util.icon('play', 18)} Start workout</button>`,
-      [repeat, '<button type="button" class="btn btn-ghost" data-act="other-templates">Other templates</button>'].filter(Boolean));
+      ['<button type="button" class="btn btn-ghost" data-act="other-templates">Other templates</button>']);
   }
 
   /* ── Daily-log tiles: one per tracker, goals shown as thin bars ── */
@@ -328,7 +326,6 @@
       case 'other-templates': HL.app.show('workout'); break;
       case 'start-next':      HL.workout.start(btn.dataset.id); break;
       case 'start-empty':     HL.workout.startEmpty(); break;
-      case 'repeat-last':     HL.workout.repeatLast(); break;
       case 'new-tracker':     HL.trackers.openBuilder(null); break;
       case 'edit-goals':      openGoalsSheet(); break;
       case 'manage-items':    openItemsSheet(); break;

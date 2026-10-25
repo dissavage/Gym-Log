@@ -115,6 +115,7 @@
     begin({ name: t.name, templateId: t.id, exercises });
   }
 
+  // Not reachable from the UI any more (kept for now)
   function repeatLast() {
     const last = repo.lastEntry('workout');
     if (!last) return;
@@ -178,13 +179,6 @@
     return `
       <header class="page-head"><div><p class="page-kicker">Start a session</p><h1 class="page-title">Workout</h1></div></header>
       <button type="button" class="btn btn-primary btn-block" data-act="start-empty">${util.icon('plus', 20)} Start empty workout</button>
-      ${last ? `
-        <button type="button" class="wo-repeat" data-act="repeat-last">
-          <span class="icon-sq icon-sq-lg" aria-hidden="true">${util.icon('repeat', 20)}</span>
-          <span class="grow"><span class="wo-repeat-title">Repeat last: ${esc(last.values.name || 'Workout')}</span>
-          <span class="wo-repeat-sub">${esc(util.fmtDay(last.dayKey, { weekday: 'short', month: 'short', day: 'numeric' }))} · ${last.values.exercises.length} exercise${last.values.exercises.length === 1 ? '' : 's'}</span></span>
-          ${util.icon('chev-right', 18)}
-        </button>` : ''}
       <section class="block-top" aria-labelledby="tpl-h">
         <div class="card-hdr">
           <h2 class="section-label" id="tpl-h">Templates</h2>
@@ -959,7 +953,6 @@
       case 'back':            HL.app.show('today'); break;
       case 'focus-ex':        focusExercise(key); break;
       case 'start-empty':     startEmpty(); break;
-      case 'repeat-last':     repeatLast(); break;
       case 'start-template':  startTemplate(template); break;
       case 'edit-template':   openTemplateEditor(template); break;
       case 'new-template':    openTemplateEditor(null); break;
@@ -1056,6 +1049,5 @@
     nextTemplate: () => nextTemplate(),
     start: startFrom(templateId => { const t = repo.get('templates', templateId); if (t) startTemplate(t); }),
     startEmpty: startFrom(startEmpty),
-    repeatLast: startFrom(repeatLast),
   };
 })(globalThis.HL = globalThis.HL || {});
