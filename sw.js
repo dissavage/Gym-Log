@@ -5,7 +5,7 @@
    Gym Tracker's caches on the same origin. A new version waits until the user
    taps "Refresh" in the update banner.
    ════════════════════════════════════ */
-const VERSION = 'v15';
+const VERSION = 'v16';
 const STATIC = `healthlog-static-${VERSION}`;
 const PAGES = `healthlog-pages-${VERSION}`;
 const CHART_JS = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';

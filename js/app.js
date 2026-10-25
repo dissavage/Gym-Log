@@ -161,13 +161,6 @@
      ════════════════════════════════════ */
   function wire() {
     for (const b of util.$$('.tab-btn')) b.querySelector('.tab-icon').innerHTML = util.icon(b.dataset.view, 26);
-    // TEMPORARY layout readout: ?debug=1 turns it on (remembered, so the installed app shows it too), ?debug=0 off
-    try {
-      const flag = new URLSearchParams(location.search).get('debug');
-      if (flag === '1') localStorage.setItem('healthlog.debug', '1');
-      if (flag === '0') localStorage.removeItem('healthlog.debug');
-      if (localStorage.getItem('healthlog.debug') === '1') document.head.appendChild(Object.assign(document.createElement('script'), { src: 'js/debug.js?v=15' }));
-    } catch { /* storage blocked: no readout */ }
     // While a text field in a view has focus (the iPhone keyboard is up) the tab bar hides, so it doesn't
     // ride up on the keyboard. Re-checked a tick after focus moves (no flicker between fields) and after
     // taps and keys, because a re-render can remove a focused field without any focusout.

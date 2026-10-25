@@ -6,8 +6,6 @@
 
   const { util, units, repo } = HL;
 
-  const debugOn = () => { try { return localStorage.getItem('healthlog.debug') === '1'; } catch { return false; } };
-
   function systemOf(prefs) {
     for (const [name, sys] of Object.entries(units.SYSTEMS)) {
       if (Object.entries(sys).every(([dim, u]) => prefs[dim] === u)) return name;
@@ -38,11 +36,7 @@
         <h2 class="section-label" id="units-h">Display</h2>
         <div class="settings-card">
           ${segRow('system', 'Measurement system', 'Data is stored in metric; this only changes display', systemOf(s.units), [['imperial', 'lb · oz'], ['metric', 'kg · ml']])}
-          ${segRow('theme', 'Theme', 'Auto follows your phone', s.theme, [['dark', 'Dark'], ['light', 'Light'], ['auto', 'Auto']])}
-          <button type="button" class="settings-row settings-link" data-act="debug-readout">
-            <span><span class="settings-lbl">Layout readout (temporary)</span><span class="settings-sub">${debugOn() ? 'On — tap to turn off' : 'Off — tap to show tab-bar measurements'}</span></span>
-          </button>
-        </div>
+          ${segRow('theme', 'Theme', 'Auto follows your phone', s.theme, [['dark', 'Dark'], ['light', 'Light'], ['auto', 'Auto']])}        </div>
       </section>
       <section class="settings-section" aria-labelledby="wo-h">
         <h2 class="section-label" id="wo-h">Workout</h2>
@@ -70,11 +64,6 @@
   function onClick(e) {
     if (HL.trackers.onClick(e) || HL.data.onClick(e)) return;
     if (e.target.closest('[data-act="exercises"]')) HL.exercises.pick({ manage: true });
-    // TEMPORARY: the installed app can't be opened with ?debug=1, so it's switchable here (same flag)
-    if (e.target.closest('[data-act="debug-readout"]')) {
-      try { debugOn() ? localStorage.removeItem('healthlog.debug') : localStorage.setItem('healthlog.debug', '1'); } catch { /* storage blocked */ }
-      location.reload();
-    }
   }
 
   HL.views = HL.views || {};
