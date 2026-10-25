@@ -48,6 +48,12 @@ body {
   padding-top: var(--safe-t); -webkit-tap-highlight-color: transparent;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* No double-tap zoom (fast steppers and ✓ taps), pinch-zoom kept. touch-action narrows down the tree,
+   so set rows (pan-y, swipe to delete) and drag handles (none) still get their own. Zero specificity:
+   any element that sets touch-action itself wins. */
+:where(html, body, button, a, input, select, textarea, label, [role="button"]) { touch-action: manipulation; }
+/* iOS zooms into any text field under 16px when it's focused */
+input, select, textarea { font-size: max(16px, 1rem); }
 button { cursor: pointer; background: none; border: none; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: 6px; }

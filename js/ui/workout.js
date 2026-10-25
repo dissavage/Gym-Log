@@ -664,27 +664,34 @@
     const list = viewEl.querySelector('.wo-list');
     const card = handle.closest('.wo-ex');
     e.preventDefault();
-    try { handle.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
     // The view groups exercises (done / focused / up next); reorder in true workout order
     for (const ex of draft.exercises) list.appendChild(list.querySelector(`[data-ex="${ex.key}"]`));
     list.classList.add('reordering');
     card.classList.add('dragging');
+    // Moving the card (above, and while dragging) drops a touch's capture on the handle,
+    // so follow this pointer on the window rather than on the handle
+    const id = e.pointerId;
+    try { handle.setPointerCapture(id); } catch { /* pointer already released */ }
     const move = ev => {
+      if (ev.pointerId !== id) return;
       const others = util.$$('.wo-ex', list).filter(c => c !== card);
       const before = others.find(c => { const r = c.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
       if (before) { if (card.nextElementSibling !== before) list.insertBefore(card, before); }
       else if (list.lastElementChild !== card) list.appendChild(card);
     };
-    const end = () => {
-      handle.removeEventListener('pointermove', move);
+    const end = ev => {
+      if (ev.pointerId !== id) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
       const order = util.$$('.wo-ex', list).map(c => c.dataset.ex);
       draft.exercises.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
       saveDraft();
       render();
     };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', end, { once: true });
-    handle.addEventListener('pointercancel', end, { once: true });
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
   }
 
   /* ── Swipe a set row left to delete it ── */
