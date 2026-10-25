@@ -14,7 +14,7 @@
   let audio = null;
 
   const pill = () => document.getElementById('rest-pill');
-  const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  const mmss = HL.util.formatDuration;
 
   function bind(getter, setter) {
     getState = getter;

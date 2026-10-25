@@ -89,6 +89,19 @@
     return `${Math.floor(m / 60)}h ${p2(m % 60)}m`;
   }
 
+  // Rest-style durations in seconds ↔ 'm:ss' (fmtDuration above is for workout lengths in minutes).
+  // '1:30' → 90, '90' → 90, '1:5' → 65, '0:90' → 150; anything else → null. No range clamping here.
+  function parseDuration(str) {
+    const m = /^(?:(\d+):)?(\d+)$/.exec(String(str ?? '').trim());
+    return m ? Number(m[1] || 0) * 60 + Number(m[2]) : null;
+  }
+
+  function formatDuration(sec) {
+    if (sec == null || isNaN(sec)) return '';
+    const s = Math.max(0, Math.round(sec));
+    return `${Math.floor(s / 60)}:${p2(s % 60)}`;
+  }
+
   // datetime-local input value ↔ Date
   function toInputDateTime(iso) {
     const d = new Date(iso);
@@ -172,7 +185,7 @@
 
   HL.util = {
     esc, uuid, localISO, dayKey, dayKeyOf, parseDayKey, addDays, daysBetween, weekStartOf, tzName,
-    fmtDay, fmtTime, fmtClock, fmtDuration, toInputDateTime,
+    fmtDay, fmtTime, fmtClock, fmtDuration, parseDuration, formatDuration, toInputDateTime,
     round, fmtNum, parseNum, $$, debounce, icon, trackerIcon,
   };
 })(globalThis.HL = globalThis.HL || {});

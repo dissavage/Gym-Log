@@ -664,6 +664,17 @@ abbr[title] { text-decoration: none; cursor: help; }
 .settings-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 /* Segmented settings: label on top, control full width underneath */
 .seg-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 16px 14px; }
+
+/* Rest-time field (duration.js): value + Custom, opening minutes:seconds with ±15s */
+.dur-field { width: 100%; }
+.dur-row { display: flex; align-items: center; gap: 12px; }
+.dur-row .field-label { margin-bottom: 0; }
+.dur-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dur-panel { margin-top: 12px; }
+.dur-edit { display: flex; align-items: center; gap: 8px; }
+.dur-in { width: 64px; padding: 8px; text-align: center; font-size: max(16px, 1rem); font-weight: 700; font-variant-numeric: tabular-nums; }
+.dur-sep { font-weight: 700; color: var(--muted); }
+.dur-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .seg-row .seg span { min-height: var(--tap); font-size: 14px; }
 .settings-link { width: 100%; text-align: left; }
 .row-ico { display: flex; color: var(--muted); flex-shrink: 0; }

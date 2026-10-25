@@ -207,6 +207,21 @@
     });
   });
 
+  suite('Rest durations', () => {
+    test('m:ss parses to seconds', () => assert.eq(['1:30', '2:00', '0:05', '15:00'].map(util.parseDuration), [90, 120, 5, 900]));
+    test('a bare number is seconds', () => assert.eq(util.parseDuration('90'), 90));
+    test('one-digit seconds are allowed', () => assert.eq(util.parseDuration('1:5'), 65));
+    test('zero parses (range is the picker’s job)', () => assert.eq(util.parseDuration('0:00'), 0));
+    test('over the range still parses', () => assert.eq(util.parseDuration('15:01'), 901));
+    test('seconds overflow normalises', () => assert.eq(util.formatDuration(util.parseDuration('0:90')), '1:30'));
+    test('spaces are trimmed', () => assert.eq(util.parseDuration(' 2:00 '), 120));
+    test('garbage is null', () =>
+      assert.eq(['', 'abc', '1:xx', '-1:00', '1.5', '1:2:3', ':30', '1:', null, undefined].map(util.parseDuration), Array(10).fill(null)));
+    test('formats as m:ss', () => assert.eq([90, 5, 0, 900, 65.4, 3600].map(util.formatDuration), ['1:30', '0:05', '0:00', '15:00', '1:05', '60:00']));
+    test('format of nothing is empty; negatives clamp to 0:00', () => assert.eq([util.formatDuration(null), util.formatDuration(NaN), util.formatDuration(-5)], ['', '', '0:00']));
+    test('round-trips', () => assert.ok([5, 59, 60, 61, 599, 900].every(s => util.parseDuration(util.formatDuration(s)) === s)));
+  });
+
   /* ════════════════════════════════════
      STRENGTH
      ════════════════════════════════════ */

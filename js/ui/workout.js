@@ -186,7 +186,7 @@
   const { isDoneEx } = session;
   const focusedEx = () => session.focused(draft.exercises, draft.active, expandPick);
 
-  const restLabel = sec => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  const restLabel = util.formatDuration;
 
   // Name + timer. While renaming, the name is an input in the same spot (sticky, so above the keyboard).
   function titleHtml() {

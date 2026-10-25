@@ -16,7 +16,7 @@ const ASSETS = [
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/icon-maskable-512.png',
   'fonts/barlow-condensed-600.woff2', 'fonts/barlow-condensed-700.woff2', 'fonts/inter-latin-var.woff2',
   'js/util.js', 'js/units.js', 'js/schema.js', 'js/domain.js', 'js/session.js', 'js/backup.js', 'js/legacy.js', 'js/demo.js', 'js/db.js', 'js/repo.js',
-  'js/ui/toast.js', 'js/ui/sheet.js', 'js/ui/entry.js', 'js/ui/rest.js', 'js/ui/exercises.js', 'js/ui/workout.js',
+  'js/ui/toast.js', 'js/ui/sheet.js', 'js/ui/entry.js', 'js/ui/rest.js', 'js/ui/duration.js', 'js/ui/exercises.js', 'js/ui/workout.js',
   'js/ui/charts.js', 'js/ui/history.js', 'js/ui/insights.js', 'js/ui/trackers.js', 'js/ui/data.js', 'js/ui/legacy-import.js',
   'js/ui/today.js', 'js/ui/settings.js', 'js/app.js',
 ];

@@ -43,7 +43,7 @@
         <h2 class="section-label" id="wo-h">Workout</h2>
         <div class="settings-card">
           ${segRow('effort', 'Effort rating', 'Shown on each set', s.effort, [['rpe', 'RPE'], ['rir', 'RIR'], ['off', 'Off']])}
-          ${segRow('restSec', 'Default rest', 'Per-exercise rest overrides this', String(s.restSec), [['60', '1:00'], ['90', '1:30'], ['120', '2:00'], ['180', '3:00']])}
+          <div class="settings-row stack">${HL.durationField.html({ id: 'set-rest', name: 'restSec', label: 'Default rest', sub: 'Per-exercise rest overrides this', value: s.restSec })}</div>
           ${segRow('plateStep', 'Weight +/− step', s.units.mass === 'lb' ? '5 lb or 2.5 lb' : '2.5 kg or 1.25 kg', s.plateStep, [['standard', 'Standard'], ['fine', 'Fine']])}
           <button type="button" class="settings-row settings-link" data-act="exercises">
             <span><span class="settings-lbl">Exercise library</span><span class="settings-sub">Add, edit or hide exercises</span></span>
@@ -59,7 +59,7 @@
     const { name, value } = e.target;
     if (name === 'system') repo.setSettings({ units: { ...units.SYSTEMS[value] } });
     if (name === 'effort' || name === 'plateStep' || name === 'theme') repo.setSettings({ [name]: value });
-    if (name === 'restSec') repo.setSettings({ restSec: Number(value) });
+    if (name === 'restSec' && Number(value) > 0) repo.setSettings({ restSec: Number(value) });
   }
 
   function onClick(e) {

@@ -127,7 +127,6 @@
   function edit(exercise, { name = '', onSave } = {}) {
     const ex = exercise || { name, primary: [], secondary: [], equipment: 'barbell', category: 'compound', restSec: null, repMin: null, repMax: null };
     const sec = new Set(ex.secondary);
-    const restOpts = [['', 'Default'], ['60', '1:00'], ['90', '1:30'], ['120', '2:00'], ['180', '3:00']];
     const body = `
       <div class="field"><label class="field-label" for="ex-name">Name</label>
         <input class="input" id="ex-name" name="name" value="${esc(ex.name)}" autocapitalize="words" ${exercise ? '' : 'autofocus'}></div>
@@ -145,9 +144,7 @@
         <div class="field grow"><label class="field-label" for="ex-cat">Type</label>
           <select class="input" id="ex-cat" name="category">${['compound', 'isolation'].map(c => `<option value="${c}" ${ex.category === c ? 'selected' : ''}>${cap(c)}</option>`).join('')}</select></div>
       </div>
-      <fieldset class="field"><legend class="field-label">Rest after each set</legend>
-        <div class="seg">${restOpts.map(([v, l]) => `<label><input type="radio" name="restSec" value="${v}" ${String(ex.restSec ?? '') === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
-      </fieldset>
+      <div class="field">${HL.durationField.html({ id: 'ex-rest', name: 'restSec', label: 'Rest after each set', value: ex.restSec ?? null, fallback: repo.getSettings().restSec, labelClass: 'field-label' })}</div>
       <div class="row-gap">
         <div class="field grow"><label class="field-label" for="ex-rmin">Target reps from</label>
           <input class="input" id="ex-rmin" name="repMin" inputmode="numeric" value="${ex.repMin ?? ''}" placeholder="e.g. 6"></div>
