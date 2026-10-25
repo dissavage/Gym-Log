@@ -20,7 +20,7 @@ A Home Screen app keeps its **own storage, separate from Safari**. Install first
 | Area | Highlights |
 |---|---|
 | **Today** | One-tap/two-tap logging tiles, totals vs daily goals (with +8/+16 oz water chips), supplements checklist, today's log, backup reminder |
-| **Workout** | Start empty or from a template; sets pre-fill from last time with "last 185×8" inline; thumb steppers, RPE/RIR, warm-up/working/drop/failure sets; swipe to delete, drag to reorder; automatic rest timer that survives tab switches and reloads; PR toasts; draft autosaves on every tap |
+| **Workout** | Start empty (name it up front) or from a template (its exercises in order); each exercise starts with one set pre-filled from the first working set last time, and tapping a number clears it to type over; one exercise expanded at a time; thumb steppers, RPE/RIR, warm-up/working/drop/failure sets; swipe to delete, drag to reorder; notes per exercise and per workout; custom rest times (0:05–15:00) and a rest timer that survives tab switches and reloads; PR toasts; draft autosaves on every tap |
 | **History** | Every log in one feed by day, filter by tracker, tap to edit; loads 50 at a time |
 | **Insights** | Streaks + calendar heat map; weekly working sets per muscle vs target bands; per-exercise estimated 1RM (Epley — an estimate), PR log and progress chart; bodyweight with a 7-day moving average; chart any numeric field over 7D/30D/90D/1Y/All, each with a data-table view |
 | **Custom trackers** | Build your own: number (with any unit), 1–5 scale, yes/no, duration, text, time; daily goals, quick-add buttons. They get logging, goals, history and charts automatically |

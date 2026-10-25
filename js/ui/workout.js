@@ -325,7 +325,8 @@
         <header class="wo-ex-hdr">
           <span class="drag-handle" data-drag aria-hidden="true">${util.icon('grip', 20)}</span>
           <div class="grow">
-            <h2 class="wo-ex-name">${esc(exercise.name)}</h2>
+            <h2 class="wo-ex-name"><button type="button" class="wo-ex-name-btn" data-act="collapse-ex" aria-expanded="true"
+              aria-label="${esc(`${exercise.name}. Collapse`)}">${esc(exercise.name)}</button></h2>
             <p class="wo-ex-sub">${esc(sub)}</p>
           </div>
           <button type="button" class="icon-btn" data-act="ex-menu" aria-label="Options for ${esc(exercise.name)}">${util.icon('dots', 22)}</button>
@@ -1035,6 +1036,7 @@
     switch (act) {
       case 'back':            HL.app.show('today'); break;
       case 'focus-ex':        setExpanded(key); break;
+      case 'collapse-ex':     setExpanded(null); viewEl.querySelector(`[data-ex="${key}"] [data-act="focus-ex"]`)?.focus({ preventScroll: true }); break;
       case 'note-open':       openNote(el.dataset.noteId); break;
       case 'note-done':       closeNote(el.dataset.noteId); break;
       case 'last-note':       toggleLastNote(key); break;

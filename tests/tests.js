@@ -341,6 +341,11 @@
       assert.eq(template.exercises.map(s => s.sets), [4, 3, 3]);
       assert.eq([built[0].repMin, built[0].repMax], [6, 8]);
     });
+    test('an exercise added from the picker gets one working set, from the first working set last time', () => {
+      const slot = ws.exerciseSlot('bench', last.bench);
+      assert.eq(slot.sets.map(s => [s.setType, s.weightKg, s.reps, s.done]), [['working', 100, 6, false]]);
+      assert.eq(ws.exerciseSlot('new-one', undefined).sets.map(s => [s.weightKg, s.reps]), [[null, null]]);
+    });
     test('missing exercises are skipped', () =>
       assert.eq(ws.fromTemplate(template, () => [], id => id !== 'dips').map(ex => ex.exerciseId), ['bench', 'fly']));
 

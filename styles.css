@@ -429,6 +429,7 @@ details.fold > .fold-body { padding: 4px 14px 2px; }
 .wo-ex-hdr { display: flex; align-items: center; gap: 8px; }
 .drag-handle { width: 28px; min-height: var(--tap); display: flex; align-items: center; justify-content: center; color: var(--faint); touch-action: none; cursor: grab; flex-shrink: 0; margin-left: -6px; }
 .wo-ex-name { font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; text-transform: uppercase; }
+.wo-ex-name-btn { font: inherit; text-transform: inherit; text-align: left; min-height: var(--tap); border-radius: 8px; }
 .wo-ex-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .wo-focus .icon-btn { background: transparent; }
 .wo-last { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); background: var(--surf2); border-radius: 8px; padding: 8px 10px; }
