@@ -974,6 +974,7 @@ Please analyze my progress, point out what's working and what's lagging, and sug
 - Volume = weight × reps over working and failure sets; warm-ups, drop sets and BW sets are excluded.
 - Est. 1RM (e1RM) uses the Epley formula and is only calculated for sets of 12 reps or fewer; "—" means no set qualified (all over 12 reps, or bodyweight only).
 - PR = personal record against every earlier session (heaviest weight, e1RM, most reps at that weight or heavier, or session volume). An exercise's first-ever session is a baseline, not a PR.
+- "started 13:25" on a workout is its logged start time (local, 24-hour clock).
 - Weekly sets = working and failure sets per muscle; secondary muscles count as half a set. "partial" weeks overlap another month, so only their days in October 2026 are counted.
 
 ## Summary
@@ -1037,7 +1038,7 @@ One line per exercise: primary muscles in brackets, then every set in order as w
 
 ### Thu Oct 1 — Push (1h 04m)
 
-08:00 · 2 working sets · volume 513 kg
+started 08:00 · 2 working sets · volume 513 kg
 
 Notes: Good | fast / slept well
 
