@@ -740,6 +740,207 @@
   });
 
   /* ════════════════════════════════════
+     MONTH REPORT (Export for Claude)
+     ════════════════════════════════════ */
+  suite('Month report builder', () => {
+    const { monthReport } = HL;
+    const at = (dayKey, time) => `${dayKey}T${time}:00.000-07:00`;
+    const log = (type, dayKey, time, values, extra = {}) =>
+      ({ id: `${type}-${dayKey}-${time}`, type, dayKey, timestamp: at(dayKey, time), values, notes: '', deletedAt: null, ...extra });
+    const set = (weightKg, reps, props = {}) => ({ setType: 'working', weightKg, reps, rpe: null, rir: null, done: true, ...props });
+    const BENCH = 'ex-barbell-bench-press';
+
+    const stepsTracker = {
+      id: 'tracker-steps', type: 'tracker', key: 'steps', name: 'Steps', kind: 'entry', builtIn: false, archived: false, order: 20,
+      fields: [
+        { key: 'steps', label: 'Steps', kind: 'number', step: 1, agg: 'sum', goal: null },
+        { key: 'felt', label: 'Felt', kind: 'text', agg: 'last', goal: null },
+      ],
+    };
+    const entries = [
+      log('workout', '2026-09-15', '09:00', { name: 'Push', templateId: 'tpl-push', durationMin: 50, exercises: [{ exerciseId: BENCH, notes: '', sets: [set(100, 5)] }] }),
+      log('workout', '2026-10-01', '08:00', {
+        name: 'Push', templateId: 'tpl-push', startedAt: at('2026-10-01', '08:00'), endedAt: at('2026-10-01', '09:04'), durationMin: 64,
+        exercises: [
+          { exerciseId: BENCH, notes: 'paused', sets: [set(60, 10, { setType: 'warmup' }), set(102.5, 5, { rpe: 8 }), set(102.5, 4, { rpe: 9 })] },
+          { exerciseId: 'ex-pull-up', notes: '', sets: [set(null, 10)] },
+        ],
+      }, { notes: 'Felt strong' }),
+      // Old-app style: no template, no duration, no RPE/RIR keys, no notes field at all
+      { id: 'legacy-1', type: 'workout', dayKey: '2026-10-31', timestamp: at('2026-10-31', '23:30'),
+        values: { name: 'Legs', exercises: [{ exerciseId: 'ex-back-squat', sets: [{ setType: 'working', weightKg: 140, reps: 15, done: true }] }] } },
+      log('workout', '2026-11-01', '00:10', { name: 'Push', templateId: 'tpl-push', durationMin: 30, exercises: [{ exerciseId: BENCH, sets: [set(200, 1)] }] }),
+      log('body', '2026-09-30', '07:00', { weight: 81 }),
+      log('body', '2026-10-02', '07:00', { weight: 80, bodyFat: 18.5 }),
+      log('body', '2026-10-30', '07:00', { weight: 79, waist: 86.36 }),
+      log('body', '2026-10-04', '07:00', { weight: 60 }, { deletedAt: '2026-10-04T08:00:00.000Z' }),
+      log('nutrition', '2026-10-01', '08:00', { food: 'Oats', calories: 500, protein: 30 }),
+      log('nutrition', '2026-10-01', '13:00', { food: 'Chicken bowl', calories: 1700, protein: 120 }),
+      log('nutrition', '2026-10-03', '12:00', { food: 'Demo pasta', calories: 900 }, { source: { app: 'demo' } }),
+      log('hydration', '2026-10-01', '10:00', { amount: 1000 }),
+      log('steps', '2026-10-05', '18:00', { steps: 8000 }),
+      log('steps', '2026-10-06', '18:00', { felt: 'tired' }),
+      log('supplements', '2026-10-01', '08:15', { itemId: 'it-creatine', item: 'Creatine', dose: 5, unit: 'g' }),
+      log('supplements', '2026-10-02', '08:15', { itemId: 'it-creatine', item: 'Creatine', dose: 5, unit: 'g' }),
+      log('supplements', '2026-10-02', '08:20', { item: 'Fish oil' }),
+    ];
+    const deps = (over = {}) => ({
+      entries,
+      trackers: [...schema.BUILTIN_TRACKERS, stepsTracker],
+      exercises: schema.BUILTIN_EXERCISES,
+      templates: [
+        { id: 'tpl-push', name: 'Push', order: 0, exercises: [{ exerciseId: BENCH, sets: 3 }] },
+        { id: 'tpl-old', name: 'Old split', order: 1, exercises: [], deletedAt: '2026-01-01T00:00:00.000Z' },
+      ],
+      checklistItems: [
+        { id: 'it-creatine', trackerType: 'supplements', name: 'Creatine', dose: 5, unit: 'g', active: true, order: 0 },
+        { id: 'it-zinc', trackerType: 'supplements', name: 'Zinc', dose: null, unit: '', active: true, order: 1 },
+      ],
+      settings: { units: imperial, weekStart: 1, effort: 'rpe' },
+      today: '2026-11-01', now: '2026-11-01T10:00:00.000-07:00', appVersion: 'v16', timezone: 'America/Los_Angeles',
+      isDemo: e => e.source?.app === 'demo',
+      ...over,
+    });
+    const oct = monthReport.buildMonthReport('2026-10', deps());
+
+    // Fails on any undefined, NaN or Infinity anywhere in the report
+    function clean(v, path = 'report') {
+      if (v === undefined) throw new Error(`${path} is undefined`);
+      if (typeof v === 'number' && !Number.isFinite(v)) throw new Error(`${path} is ${v}`);
+      if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) clean(x, `${path}.${k}`);
+    }
+
+    test('month bounds use local calendar days', () => {
+      assert.eq(monthReport.monthBounds('2026-10'), { monthKey: '2026-10', first: '2026-10-01', last: '2026-10-31', daysInMonth: 31, label: 'October 2026' });
+      assert.eq(monthReport.monthBounds('2028-02').daysInMonth, 29);
+      assert.eq(monthReport.shiftMonth('2026-01', -1), '2025-12');
+      assert.eq(monthReport.shiftMonth('2026-12', 1), '2027-01');
+      assert.throws(() => monthReport.monthBounds('2026-13'), /Not a month/);
+    });
+    test('first and last day are in; neighbours, deleted and demo logs are out', () => {
+      assert.eq(oct.workouts.map(w => w.dayKey), ['2026-10-01', '2026-10-31']);
+      assert.eq(oct.meta.daysLogged, 6);
+      assert.eq(oct.stats.bodyweight.weighIns, 2);
+    });
+    test('11:30 PM on the last day stays in the month (day key, not UTC)', () => {
+      assert.eq(new Date(entries[2].timestamp).getUTCDate(), 1, 'fixture sanity: it is already Nov 1 in UTC');
+      assert.eq(oct.workouts[1].time, '23:30');
+      assert.eq(oct.workouts[1].name, 'Legs');
+    });
+    test('meta', () => {
+      assert.eq(oct.meta.label, 'October 2026');
+      assert.eq(oct.meta.daysElapsed, 31);
+      assert.eq(oct.meta.inProgress, false);
+      assert.eq(oct.meta.weekStart, 'Monday');
+      assert.eq(oct.meta.units, { mass: 'lb', volume: 'oz', distance: 'mi', length: 'in' });
+      assert.eq(oct.meta.appVersion, 'v16');
+    });
+    test('the current month counts days only up to today', () => {
+      const r = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-15' }));
+      assert.eq([r.meta.daysElapsed, r.meta.inProgress, r.checklists[0].daysCounted], [15, true, 15]);
+    });
+    test('every set is listed in display units; empty weight is bodyweight', () => {
+      const [bench, pull] = oct.workouts[0].exercises;
+      assert.eq(bench.sets.map(s => [s.type, s.weight, s.reps, s.rpe]), [['warmup', 132.3, 10, null], ['working', 226, 5, 8], ['working', 226, 4, 9]]);
+      assert.eq([pull.sets[0].weight, pull.sets[0].bodyweight, pull.sets[0].reps], [null, true, 10]);
+      assert.eq(bench.primary, ['Chest']);
+      assert.eq(bench.notes, 'paused');
+    });
+    test('workout fields: template, duration, notes', () => {
+      const w = oct.workouts[0];
+      assert.eq([w.template, w.durationMin, w.notes, w.workingSets, w.volume], ['Push', 64, 'Felt strong', 3, 2034]);
+    });
+    test('old-style workout: missing fields become null, never undefined', () => {
+      const w = oct.workouts[1];
+      assert.eq([w.template, w.durationMin, w.notes], [null, null, null]);
+      assert.eq(w.exercises[0].sets[0], { n: 1, type: 'working', weight: 308.6, bodyweight: false, reps: 15, rpe: null, rir: null, done: true, prs: [] });
+      clean(oct);
+    });
+    test('PRs come from domain.sessionPRs; the first session is a baseline', () => {
+      const [bench, pull] = oct.workouts[0].exercises;
+      assert.eq(bench.sets.map(s => s.prs), [[], ['weight', 'e1rm'], []]);
+      assert.eq(bench.volumePR, 2034);
+      assert.eq(pull.sets[0].prs, []);
+      assert.eq(oct.stats.prs, 3);
+    });
+    test('exercise progress: this month vs before, volume excludes warm-ups and bodyweight', () => {
+      const byName = Object.fromEntries(oct.exerciseProgress.map(x => [x.name, x]));
+      assert.eq(oct.exerciseProgress.map(x => x.name), ['Back Squat', 'Barbell Bench Press', 'Pull-up']);
+      const b = byName['Barbell Bench Press'];
+      assert.eq([b.bestE1rm, b.bestE1rmBefore, b.change, b.workingSets, b.volume], [264, 257, 7, 2, 2034]);
+      assert.eq(b.topSet, { weight: 226, bodyweight: false, reps: 5 });
+      assert.eq([byName['Pull-up'].bestE1rm, byName['Pull-up'].volume, byName['Pull-up'].topSet.bodyweight], [null, 0, true]);
+    });
+    test('e1RM is null past 12 reps', () => {
+      const sq = oct.exerciseProgress.find(x => x.name === 'Back Squat');
+      assert.eq([sq.bestE1rm, sq.bestE1rmBefore, sq.change, sq.volume], [null, null, null, 4630]);
+    });
+    test('weekly sets: every overlapping week, edge weeks partial, only sets inside the month', () => {
+      const w = oct.weeklySets;
+      assert.eq(w.weeks.map(x => [x.start, x.partial]), [['2026-09-28', true], ['2026-10-05', false], ['2026-10-12', false], ['2026-10-19', false], ['2026-10-26', true]]);
+      const row = name => w.rows.find(r => r.muscle === name);
+      assert.eq(row('Chest').sets, [2, 0, 0, 0, 0], 'the Nov 1 bench session is not counted');
+      assert.eq(row('Quads').sets, [0, 0, 0, 0, 1]);
+      assert.eq(row('Biceps').sets, [0.5, 0, 0, 0, 0]);
+      assert.eq(row('Chest').target, [10, 20]);
+    });
+    test('nutrition: daily totals with goal state', () => {
+      const n = oct.dailyTrackers.find(t => t.key === 'nutrition');
+      assert.eq(n.mode, 'daily');
+      assert.eq(n.columns.map(c => c.key), ['food', 'calories', 'protein']);
+      assert.eq(n.rows, [{ dayKey: '2026-10-01', values: { food: 'Oats; Chicken bowl', calories: 2200, protein: 150 }, goals: { calories: 'over', protein: 'met' }, notes: null }]);
+    });
+    test('body entries keep their time; units in display units', () => {
+      const body = oct.dailyTrackers.find(t => t.key === 'body');
+      assert.eq(body.mode, 'entries');
+      assert.eq(body.rows.map(r => [r.time, r.values]), [['07:00', { weight: 176.4, bodyFat: 18.5 }], ['07:00', { weight: 174.2, waist: 34 }]]);
+      assert.eq(body.columns.map(c => [c.key, c.unit]), [['weight', 'lb'], ['bodyFat', '%'], ['waist', 'in']]);
+    });
+    test('custom tracker lists every entry, leaving out missing values', () => {
+      const s = oct.dailyTrackers.find(t => t.key === 'steps');
+      assert.eq(s.rows.map(r => r.values), [{ steps: 8000 }, { felt: 'tired' }]);
+    });
+    test('unit conversion follows the display setting', () => {
+      const m = monthReport.buildMonthReport('2026-10', deps({ settings: { units: metric, weekStart: 1 } }));
+      assert.eq(m.workouts[0].exercises[0].sets[1].weight, 102.5);
+      assert.eq(m.goals.find(g => g.tracker === 'Water'), { tracker: 'Water', field: 'Amount', target: 2500, unit: 'ml', dir: 'atLeast' });
+      assert.eq(oct.goals.find(g => g.tracker === 'Water').target, 84.5);
+      assert.eq(m.dailyTrackers.find(t => t.key === 'hydration').rows[0].values.amount, 1000);
+      assert.eq(oct.dailyTrackers.find(t => t.key === 'hydration').rows[0].values.amount, 33.8);
+    });
+    test('supplements: days taken per item, unticked active items included', () => {
+      assert.eq(oct.checklists[0].items.map(i => [i.name, i.daysTaken, i.days.length]), [['Creatine', 2, 2], ['Zinc', 0, 0], ['Fish oil', 1, 1]]);
+      assert.eq(oct.checklists[0].daysCounted, 31);
+    });
+    test('goals and split', () => {
+      assert.eq(oct.goals.find(g => g.field === 'Calories'), { tracker: 'Food', field: 'Calories', target: 2000, unit: 'kcal', dir: 'atMost' });
+      assert.eq(oct.split.templates, [{ name: 'Push', exercises: ['Barbell Bench Press'], sessions: 1 }]);
+      assert.eq(oct.split.other, [{ name: 'Legs', sessions: 1 }]);
+    });
+    test('month stats', () => {
+      const s = oct.stats;
+      assert.eq([s.workouts, s.workingSets, s.volume, s.avgSessionMin], [2, 4, 6663, 64]);
+      assert.eq(s.bodyweight, { start: 176.4, end: 174.2, min: 174.2, max: 176.4, change: -2.2, weighIns: 2 });
+      assert.eq([s.avgCalories, s.avgProtein, s.avgWater, s.avgSleepMin], [2200, 150, 33.8, null]);
+      assert.eq([s.streakAtEnd, s.longestStreak], [2, 2]);
+      assert.eq(s.goalDays.map(g => [g.field, g.met, g.days]), [['Calories', 0, 1], ['Protein', 1, 1], ['Amount', 0, 1]]);
+    });
+    test('vs previous month: deltas only when that month has data', () => {
+      const v = oct.vsPrevious;
+      assert.eq(v.month, '2026-09');
+      assert.eq([v.stats.workouts, v.deltas.workouts, v.deltas.workingSets, v.deltas.bodyweightEnd], [1, 1, 3, -4.4]);
+      assert.eq(monthReport.buildMonthReport('2026-09', deps()).vsPrevious, null);
+    });
+    test('an empty month is flagged and has nothing in it', () => {
+      const r = monthReport.buildMonthReport('2026-06', deps());
+      assert.eq([r.empty, r.workouts.length, r.weeklySets, r.dailyTrackers.length, r.checklists.length, r.vsPrevious, r.stats.bodyweight],
+        [true, 0, null, 0, 0, null, null]);
+      clean(r);
+    });
+    test('no undefined or NaN with an empty deps object', () => clean(monthReport.buildMonthReport('2026-10', { today: '2026-11-01', now: 'x' })));
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');
