@@ -742,7 +742,7 @@
   /* ════════════════════════════════════
      MONTH REPORT (Export for Claude)
      ════════════════════════════════════ */
-  suite('Month report builder', () => {
+  suite('Month report (Export for Claude)', () => {
     const { monthReport } = HL;
     const at = (dayKey, time) => `${dayKey}T${time}:00.000-07:00`;
     const log = (type, dayKey, time, values, extra = {}) =>
@@ -938,6 +938,172 @@
       clean(r);
     });
     test('no undefined or NaN with an empty deps object', () => clean(monthReport.buildMonthReport('2026-10', { today: '2026-11-01', now: 'x' })));
+
+    /* ── Markdown ── */
+    const md = monthReport.renderReportMarkdown(oct);
+    const noJunk = text => {
+      const bad = text.match(/\b(undefined|NaN|null|Infinity)\b|\[object/);
+      if (bad) throw new Error(`found "${bad[0]}" near: ${text.slice(Math.max(0, bad.index - 60), bad.index + 20)}`);
+    };
+
+    test('markdown: golden output for a small month', () => {
+      const g = {
+        entries: [
+          log('workout', '2026-09-15', '09:00', { name: 'Push', exercises: [{ exerciseId: BENCH, sets: [set(100, 5)] }] }),
+          log('workout', '2026-10-01', '08:00', { name: 'Push', durationMin: 64, exercises: [
+            { exerciseId: BENCH, notes: 'paused', sets: [set(60, 10, { setType: 'warmup' }), set(102.5, 5, { rpe: 8 })] },
+            { exerciseId: 'ex-pull-up', sets: [set(null, 15)] }] }, { notes: 'Good | fast\nslept well' }),
+          log('body', '2026-10-02', '07:00', { weight: 80 }, { notes: 'after | coffee\nfasted' }),
+        ],
+        trackers: schema.BUILTIN_TRACKERS.filter(t => t.key === 'workout' || t.key === 'body'), exercises: schema.BUILTIN_EXERCISES,
+        settings: { units: metric, weekStart: 1 }, today: '2026-11-01', now: '2026-11-01T10:00:00.000-07:00', appVersion: 'v16', timezone: 'America/Los_Angeles',
+      };
+      const expected = String.raw`# Health Log report — October 2026
+
+This is my personal training and health log for October 2026, exported from my Health Log app. I logged something on 2 of 31 days.
+
+Units: weight kg, water ml, distance km, body measurements cm. Times are local (America/Los_Angeles); weeks start on Monday.
+
+Effort per set: RPE = rate of perceived exertion (10 = maximal effort).
+
+Please analyze my progress, point out what's working and what's lagging, and suggest specific changes for next month. Ask me questions if the data looks incomplete.
+
+## How to read this
+
+- Weights are per set, in kg. "BW" = bodyweight set (no added weight); BW sets are not counted in volume.
+- Volume = weight × reps over working and failure sets; warm-ups, drop sets and BW sets are excluded.
+- Est. 1RM (e1RM) uses the Epley formula and is only calculated for sets of 12 reps or fewer; "—" means no set qualified (all over 12 reps, or bodyweight only).
+- PR = personal record against every earlier session (heaviest weight, e1RM, most reps at that weight or heavier, or session volume). An exercise's first-ever session is a baseline, not a PR.
+- Weekly sets = working and failure sets per muscle; secondary muscles count as half a set. "partial" weeks overlap another month, so only their days in October 2026 are counted.
+
+## Summary
+
+- Days with a log: 2 of 31
+- Workouts: 1 (0.2 per week), average 1h 04m
+- Working sets: 2; volume 513 kg
+- PRs: 3
+- Logging streak: longest 2 days in the month; 0 days running at month end
+- Bodyweight: 80 kg (1 weigh-in)
+
+### Compared with September 2026
+
+| Metric | October 2026 | September 2026 | Change |
+| --- | --- | --- | --- |
+| Days with a log | 2 | 1 | +1 |
+| Workouts | 1 | 1 | 0 |
+| Workouts per week | 0.2 | 0.2 | 0 |
+| Working sets | 2 | 1 | +1 |
+| Volume (kg) | 513 | 500 | +13 |
+| Average workout (min) | 64 |  |  |
+| Bodyweight at month end (kg) | 80 |  |  |
+
+## Goals & split
+
+| Workout (no template) | Sessions this month |
+| --- | --- |
+| Push | 1 |
+
+## Exercise progress
+
+| Exercise | Sessions | Best e1RM (kg) | Best e1RM before this month (kg) | Change (kg) | Working sets | Volume (kg) | Top set (kg × reps) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Barbell Bench Press | 1 | 120 | 117 | +3 | 1 | 513 | 102.5 × 5 |
+| Pull-up | 1 | — | first month |  | 1 | 0 | BW × 15 |
+
+## Weekly sets per muscle
+
+Target for every muscle: 10–20 sets per week.
+
+| Muscle | Sep 28–Oct 4 (partial) | Oct 5–11 | Oct 12–18 | Oct 19–25 | Oct 26–Nov 1 (partial) |
+| --- | --- | --- | --- | --- | --- |
+| Chest | 1 | 0 | 0 | 0 | 0 |
+| Front delts | 0.5 | 0 | 0 | 0 | 0 |
+| Lats | 1 | 0 | 0 | 0 | 0 |
+| Upper back | 0.5 | 0 | 0 | 0 | 0 |
+| Biceps | 0.5 | 0 | 0 | 0 | 0 |
+| Triceps | 0.5 | 0 | 0 | 0 | 0 |
+
+## Body & daily trackers
+
+### Body (every entry)
+
+| Date | Time | Bodyweight (kg) | Notes |
+| --- | --- | --- | --- |
+| Fri Oct 2 | 07:00 | 80 | after \| coffee / fasted |
+
+## Every workout
+
+### Thu Oct 1 — Push (1h 04m)
+
+08:00 · 2 working sets · volume 513 kg
+
+Notes: Good | fast / slept well
+
+**Barbell Bench Press** (Chest) — Note: paused. PR: session volume 513 kg.
+
+| Set | Type | Weight (kg) | Reps | RPE | PR |
+| --- | --- | --- | --- | --- | --- |
+| 1 | warm-up | 60 | 10 |  |  |
+| 2 | working | 102.5 | 5 | 8 | PR (weight, e1RM) |
+
+**Pull-up** (Lats)
+
+| Set | Weight (kg) | Reps |
+| --- | --- | --- |
+| 1 | BW | 15 |
+
+---
+
+Generated 2026-11-01 10:00 by Health Log v16.
+`;
+      const actual = monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', g));
+      if (actual !== expected) {
+        const a = actual.split('\n');
+        const e = expected.split('\n');
+        const i = a.findIndex((line, k) => line !== e[k]);
+        throw new Error(`first difference at line ${i + 1}\n  expected ${JSON.stringify(e[i])}\n  actual   ${JSON.stringify(a[i])}`);
+      }
+    });
+    test('markdown: no undefined / NaN / null, in lb and in kg', () => {
+      noJunk(md);
+      noJunk(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', deps({ settings: { units: metric, weekStart: 0, effort: 'rir' } }))));
+      noJunk(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', { today: '2026-11-01', now: 'x' })));
+    });
+    test('markdown: goal marks only on missed days; single goals go by tracker name', () => {
+      assert.ok(md.includes('| Thu Oct 1 | Oats; Chicken bowl | 2,200 (over) | 150 |'), 'food row');
+      assert.ok(md.includes('Goals met (days met / days logged): Calories 0/1, Protein 1/1, Water 0/1'), 'goals line');
+      assert.ok(md.includes('| Water | at least 84.5 oz |'), 'goal table');
+      assert.ok(md.includes('| Sleep | at least 8h 00m |'), 'duration goal');
+    });
+    test('markdown: e1RM over 12 reps prints "—" and the header explains it', () => {
+      assert.ok(/\| Back Squat \| 1 \| — \| first month \|/.test(md), 'squat row');
+      assert.ok(md.includes('only calculated for sets of 12 reps or fewer'));
+    });
+    test('markdown: supplements list the shorter of taken / missed days', () => {
+      assert.ok(md.includes('| Creatine | 5 g | 2 of 31 (6%) | taken 1, 2 |'), 'creatine');
+      assert.ok(md.includes('| Zinc |  | 0 of 31 (0%) | none |'), 'zinc');
+    });
+    test('markdown: template split, old workouts listed as "(no template)"', () => {
+      assert.ok(md.includes('| Push | Barbell Bench Press | 1 |'));
+      assert.ok(md.includes('| Legs | (no template) | 1 |'));
+      assert.ok(md.includes('### Sat Oct 31 — Legs\n'), 'no duration in brackets when unknown');
+    });
+    test('markdown: turning sections off drops their headings', () => {
+      const off = monthReport.renderReportMarkdown(oct, { sections: { workouts: false, progress: false, weekly: false, daily: false, supplements: false, previous: false } });
+      for (const h of ['## Every workout', '## Exercise progress', '## Weekly sets', '## Body & daily', '## Supplements', '### Compared with']) assert.ok(!off.includes(h), h);
+      assert.ok(!off.includes('partial'), 'weekly explanation goes with the section');
+      assert.ok(off.includes('## Summary') && off.includes('## Goals & split'));
+      for (const h of ['## Every workout', '## Exercise progress', '## Weekly sets', '## Body & daily', '## Supplements', '### Compared with']) assert.ok(md.includes(h), `full report has ${h}`);
+    });
+    test('markdown: the user goal goes at the top as a quote', () => {
+      const r = monthReport.buildMonthReport('2026-10', deps({ settings: { units: imperial, exportGoal: 'Lean bulk to 185 lb\nBench 275 by March' } }));
+      assert.ok(monthReport.renderReportMarkdown(r).includes('## My goal\n\n> Lean bulk to 185 lb\n> Bench 275 by March\n'));
+    });
+    test('markdown: an empty month is a short note; size helper counts UTF-8 bytes', () => {
+      assert.eq(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-06', deps())), '# Health Log report — June 2026\n\nNo data was logged in June 2026.\n');
+      assert.eq(monthReport.byteSize('a—b'), 5);
+      assert.eq(monthReport.SIZE_WARN_BYTES, 256000);
+    });
   });
 
   /* ════════════════════════════════════

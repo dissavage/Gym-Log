@@ -198,6 +198,7 @@
       return {
         name: exName(id),
         sessions: month.length,
+        sessionsBefore: sessions.filter(s => s.dayKey < b.first).length,
         bestE1rm: bestShown,
         bestE1rmBefore: priorShown,
         change: bestShown != null && priorShown != null ? rnd(bestShown - priorShown, 0) : null,
@@ -423,5 +424,278 @@
     };
   }
 
-  HL.monthReport = { MONTHS, DEFAULT_TARGET, monthBounds, shiftMonth, buildMonthReport };
+  /* ════════════════════════════════════
+     MARKDOWN — GitHub-flavoured tables, no HTML, no emoji
+     Fixed English labels (not the phone's locale) so the file reads the same everywhere.
+     ════════════════════════════════════ */
+  const SIZE_WARN_BYTES = 250 * 1024;
+  const SECTIONS = ['workouts', 'progress', 'weekly', 'daily', 'supplements', 'previous'];
+  const SHORT_MONTHS = MONTHS.map(m => m.slice(0, 3));
+  const SHORT_DAYS = DAY_NAMES.map(d => d.slice(0, 3));
+  const DIR_WORDS = { atLeast: 'at least', atMost: 'at most', target: 'about' };
+  const SET_TYPES = { warmup: 'warm-up', working: 'working', failure: 'failure', drop: 'drop' };
+  const PR_WORDS = { weight: 'weight', e1rm: 'e1RM', reps: 'reps' };
+
+  const num = (v, dp = 1) => (fin(v) ? v.toLocaleString('en-US', { maximumFractionDigits: dp }) : '');
+  const signed = (v, dp = 1) => (!fin(v) ? '' : v > 0 ? `+${num(v, dp)}` : v < 0 ? `-${num(-v, dp)}` : '0');
+  const hmm = min => (fin(min) ? `${Math.floor(Math.round(min) / 60)}:${p2(Math.round(min) % 60)}` : '');
+  const dateOf = key => util.parseDayKey(key);
+  const dayLabel = key => { const d = dateOf(key); return `${SHORT_DAYS[d.getDay()]} ${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}`; };
+  const shortDay = key => { const d = dateOf(key); return `${SHORT_MONTHS[d.getMonth()]} ${d.getDate()}`; };
+  const oneLine = s => String(s ?? '').replace(/\s*\r?\n\s*/g, ' / ').trim();
+  const cell = s => oneLine(s).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+  const plural = (n, word) => `${num(n, 0)} ${word}${n === 1 ? '' : 's'}`;
+  const byteSize = text => new TextEncoder().encode(text).length;
+
+  function weekLabel(w) {
+    const a = dateOf(w.start);
+    const b = dateOf(w.end);
+    const range = a.getMonth() === b.getMonth() ? `${shortDay(w.start)}–${b.getDate()}` : `${shortDay(w.start)}–${shortDay(w.end)}`;
+    return w.partial ? `${range} (partial)` : range;
+  }
+
+  // Rows are arrays of strings; a column that's empty in every row is dropped (the first one never is)
+  function table(headers, rows) {
+    const used = headers.map((_, i) => i === 0 || rows.some(r => r[i] != null && r[i] !== ''));
+    const pick = r => r.filter((_, i) => used[i]);
+    const line = cells => `| ${cells.join(' | ')} |`;
+    const head = pick(headers);
+    return [line(head.map(cell)), line(head.map(() => '---')), ...rows.map(r => line(pick(r).map(x => cell(x ?? ''))))].join('\n');
+  }
+
+  function columnHeader(c) {
+    if (c.kind === 'duration') return `${c.label} (h:mm)`;
+    return c.unit ? `${c.label} (${c.unit})` : c.label;
+  }
+
+  function fieldText(c, v) {
+    if (v == null) return '';
+    switch (c.kind) {
+      case 'duration': return hmm(v);
+      case 'bool':     return v ? 'Yes' : 'No';
+      case 'scale':    return num(v, 1);
+      case 'number':   return num(v, 3);
+      default:         return String(v);
+    }
+  }
+
+  function goalText(g) {
+    const target = g.unit === 'min' ? util.fmtDuration(g.target) : `${num(g.target, 1)}${g.unit ? (g.unit === '%' ? '%' : ` ${g.unit}`) : ''}`;
+    return `${DIR_WORDS[g.dir] || 'at least'} ${target}`;
+  }
+
+  const stamp = iso => (/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(iso || '') ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : String(iso || ''));
+
+  /**
+   * report → Markdown string. options.sections: { workouts, progress, weekly, daily, supplements, previous }
+   * — each on unless set to false. The header, summary and goals are always included.
+   */
+  function renderReportMarkdown(report, { sections = {} } = {}) {
+    const on = key => sections[key] !== false;
+    const { meta, stats } = report;
+    const U = meta.units;
+    const out = [];
+    const block = (...lines) => out.push(...lines, '');
+    const allSets = report.workouts.flatMap(w => w.exercises.flatMap(x => x.sets));
+    const hasWorkouts = report.workouts.length > 0;
+    const showWeekly = on('weekly') && report.weeklySets;
+    const showDaily = on('daily') && report.dailyTrackers.length;
+    const showChecklists = on('supplements') && report.checklists.length;
+
+    // A tracker's only goal goes by the tracker's name ("Water"), several by field ("Calories"); clashes get both
+    const goalFields = new Map();
+    for (const g of [...report.goals, ...stats.goalDays]) goalFields.set(g.tracker, (goalFields.get(g.tracker) || new Set()).add(g.field));
+    const shortGoal = (t, f) => (goalFields.get(t).size === 1 ? t : f);
+    const shortUses = new Map();
+    for (const [t, fields] of goalFields) for (const f of fields) shortUses.set(shortGoal(t, f), (shortUses.get(shortGoal(t, f)) || 0) + 1);
+    const goalName = (t, f) => (shortUses.get(shortGoal(t, f)) > 1 ? `${t}: ${f}` : shortGoal(t, f));
+
+    /* ── Header ── */
+    block(`# Health Log report — ${meta.label}`);
+    if (report.empty) {
+      block(`No data was logged in ${meta.label}.`);
+      return `${out.join('\n').trimEnd()}\n`;
+    }
+    block(`This is my personal training and health log for ${meta.label}, exported from my Health Log app. I logged something on ${meta.daysLogged} of ${meta.inProgress ? `the ${meta.daysElapsed} days so far` : `${meta.daysInMonth} days`}${meta.inProgress ? ' (the month is still in progress)' : ''}.`);
+    block(`Units: weight ${U.mass}, water ${U.volume}, distance ${U.distance}, body measurements ${U.length}. Times are local${meta.timezone ? ` (${meta.timezone})` : ''}; weeks start on ${meta.weekStart}.`);
+    const effort = [
+      allSets.some(s => s.rpe != null) && 'RPE = rate of perceived exertion (10 = maximal effort)',
+      allSets.some(s => s.rir != null) && 'RIR = reps in reserve (0 = taken to failure)',
+    ].filter(Boolean);
+    if (effort.length) block(`Effort per set: ${effort.join('; ')}.`);
+    block('Please analyze my progress, point out what\'s working and what\'s lagging, and suggest specific changes for next month. Ask me questions if the data looks incomplete.');
+    if (report.userGoal) block('## My goal', '', ...report.userGoal.split(/\r?\n/).map(l => `> ${l}`.trimEnd()));
+
+    const howTo = [];
+    if (hasWorkouts) {
+      howTo.push(`Weights are per set, in ${U.mass}. "BW" = bodyweight set (no added weight); BW sets are not counted in volume.`);
+      howTo.push('Volume = weight × reps over working and failure sets; warm-ups, drop sets and BW sets are excluded.');
+      howTo.push('Est. 1RM (e1RM) uses the Epley formula and is only calculated for sets of 12 reps or fewer; "—" means no set qualified (all over 12 reps, or bodyweight only).');
+      howTo.push('PR = personal record against every earlier session (heaviest weight, e1RM, most reps at that weight or heavier, or session volume). An exercise\'s first-ever session is a baseline, not a PR.');
+    }
+    if (showWeekly) howTo.push(`Weekly sets = working and failure sets per muscle; secondary muscles count as half a set. "partial" weeks overlap another month, so only their days in ${meta.label} are counted.`);
+    if (report.goals.length) howTo.push('Goals: "met" for an "at most" goal means at or under the limit; "about" goals count as met within ±10%. In daily tables, "(under)" or "(over)" after a value means that day missed its goal; no mark means met.');
+    if (showDaily && report.dailyTrackers.some(t => t.columns.some(c => c.kind === 'duration'))) howTo.push('Durations in tables are h:mm.');
+    if (howTo.length) block('## How to read this', '', ...howTo.map(t => `- ${t}`));
+
+    /* ── Summary ── */
+    const summary = [];
+    summary.push(`Days with a log: ${meta.daysLogged} of ${meta.inProgress ? `${meta.daysElapsed} so far` : meta.daysInMonth}`);
+    if (stats.workouts) {
+      summary.push(`Workouts: ${stats.workouts}${stats.avgWeeklySessions != null ? ` (${num(stats.avgWeeklySessions, 1)} per week)` : ''}${stats.avgSessionMin ? `, average ${util.fmtDuration(stats.avgSessionMin)}` : ''}`);
+      summary.push(`Working sets: ${num(stats.workingSets, 0)}; volume ${num(stats.volume, 0)} ${U.mass}`);
+      summary.push(`PRs: ${stats.prs}`);
+    }
+    summary.push(`Logging streak: longest ${plural(stats.longestStreak, 'day')} in the month; ${plural(stats.streakAtEnd, 'day')} running ${meta.inProgress ? 'as of today' : 'at month end'}`);
+    const avgs = [
+      stats.avgCalories != null && `${num(stats.avgCalories, 0)} kcal`,
+      stats.avgProtein != null && `${num(stats.avgProtein, 0)} g protein`,
+      stats.avgWater != null && `${num(stats.avgWater, 1)} ${U.volume} water`,
+      stats.avgSleepMin != null && `${util.fmtDuration(stats.avgSleepMin)} sleep`,
+    ].filter(Boolean);
+    if (avgs.length) summary.push(`Daily averages (over the days each was logged): ${avgs.join(', ')}`);
+    if (stats.cardioSessions) summary.push(`Cardio: ${plural(stats.cardioSessions, 'session')}${stats.cardioMin ? `, ${util.fmtDuration(stats.cardioMin)} total` : ''}`);
+    const bw = stats.bodyweight;
+    if (bw) {
+      summary.push(bw.weighIns === 1 ? `Bodyweight: ${num(bw.end)} ${U.mass} (1 weigh-in)`
+        : `Bodyweight: ${num(bw.start)} → ${num(bw.end)} ${U.mass} (${signed(bw.change)}), low ${num(bw.min)}, high ${num(bw.max)}, ${plural(bw.weighIns, 'weigh-in')}`);
+    }
+    if (stats.goalDays.length) summary.push(`Goals met (days met / days logged): ${stats.goalDays.map(g => `${goalName(g.tracker, g.field)} ${g.met}/${g.days}`).join(', ')}`);
+    block('## Summary', '', ...summary.map(t => `- ${t}`));
+
+    const prev = on('previous') && report.vsPrevious;
+    if (prev) {
+      const p = prev.stats;
+      const rows = [
+        ['Days with a log', stats.daysLogged, p.daysLogged, 'daysLogged', 0],
+        ['Workouts', stats.workouts, p.workouts, 'workouts', 0],
+        ['Workouts per week', stats.avgWeeklySessions, p.avgWeeklySessions, 'avgWeeklySessions', 1],
+        ['Working sets', stats.workingSets, p.workingSets, 'workingSets', 0],
+        [`Volume (${U.mass})`, stats.volume, p.volume, 'volume', 0],
+        ['Average workout (min)', stats.avgSessionMin, p.avgSessionMin, 'avgSessionMin', 0],
+        ['Average calories (kcal)', stats.avgCalories, p.avgCalories, 'avgCalories', 0],
+        ['Average protein (g)', stats.avgProtein, p.avgProtein, 'avgProtein', 0],
+        [`Average water (${U.volume})`, stats.avgWater, p.avgWater, 'avgWater', 1],
+        ['Average sleep (min)', stats.avgSleepMin, p.avgSleepMin, 'avgSleepMin', 0],
+        ['Cardio sessions', stats.cardioSessions, p.cardioSessions, 'cardioSessions', 0],
+        ['Cardio (min)', stats.cardioMin, p.cardioMin, 'cardioMin', 0],
+        [`Bodyweight at month end (${U.mass})`, bw?.end, p.bodyweight?.end, 'bodyweightEnd', 1],
+        [`Bodyweight change in month (${U.mass})`, bw?.change, p.bodyweight?.change, null, 1],
+      ].filter(([, a, b2]) => (a != null || b2 != null) && !(!a && !b2));
+      const fmtV = (v, dp, isChange) => (v == null ? '' : isChange ? signed(v, dp) : num(v, dp));
+      block(`### Compared with ${prev.label}`, '', table(['Metric', meta.label, prev.label, 'Change'],
+        rows.map(([label, a, b2, key, dp]) => [label, fmtV(a, dp, !key), fmtV(b2, dp, !key), key ? signed(prev.deltas[key], dp) : ''])));
+    }
+
+    /* ── Goals & split ── */
+    const split = report.split;
+    if (report.goals.length || split) {
+      block('## Goals & split');
+      if (report.goals.length) block(table(['Daily goal', 'Target'], report.goals.map(g => [goalName(g.tracker, g.field), goalText(g)])));
+      if (split && !split.templates.length) {
+        block(table(['Workout (no template)', 'Sessions this month'], split.other.map(o => [o.name, String(o.sessions)])));
+      } else if (split) {
+        const rows = split.templates.map(t => [t.name, t.exercises.join(', '), String(t.sessions)])
+          .concat(split.other.map(o => [o.name, '(no template)', String(o.sessions)]));
+        block(table(['Workout', 'Exercises', 'Sessions this month'], rows));
+      }
+    }
+
+    /* ── Exercise progress ── */
+    if (on('progress') && report.exerciseProgress.length) {
+      const m = U.mass;
+      block('## Exercise progress', '', table(
+        ['Exercise', 'Sessions', `Best e1RM (${m})`, `Best e1RM before this month (${m})`, `Change (${m})`, 'Working sets', `Volume (${m})`, `Top set (${m} × reps)`],
+        report.exerciseProgress.map(x => [
+          x.name, String(x.sessions),
+          x.bestE1rm == null ? '—' : num(x.bestE1rm, 0),
+          x.sessionsBefore === 0 ? 'first month' : x.bestE1rmBefore == null ? '—' : num(x.bestE1rmBefore, 0),
+          signed(x.change, 0),
+          String(x.workingSets),
+          num(x.volume, 0),
+          x.topSet ? `${x.topSet.bodyweight ? 'BW' : num(x.topSet.weight)} × ${x.topSet.reps ?? '?'}` : '',
+        ])));
+    }
+
+    /* ── Weekly sets per muscle ── */
+    if (showWeekly) {
+      const w = report.weeklySets;
+      const range = r => `${r.target[0]}–${r.target[1]}`;
+      // One shared target becomes a sentence instead of a column repeating it on every row
+      const shared = w.rows.every(r => range(r) === range(w.rows[0])) ? range(w.rows[0]) : null;
+      block('## Weekly sets per muscle');
+      if (shared) block(`Target for every muscle: ${shared} sets per week.`);
+      block(table(
+        ['Muscle', ...w.weeks.map(weekLabel), ...(shared ? [] : ['Target per week'])],
+        w.rows.map(r => [r.muscle, ...r.sets.map(n => num(n, 1)), ...(shared ? [] : [range(r)])])));
+    }
+
+    /* ── Daily trackers ── */
+    if (showDaily) {
+      block('## Body & daily trackers');
+      for (const t of report.dailyTrackers) {
+        const daily = t.mode === 'daily';
+        const headers = ['Date', ...(daily ? [] : ['Time']), ...t.columns.map(columnHeader), 'Notes'];
+        const rows = t.rows.map(r => [
+          dayLabel(r.dayKey), ...(daily ? [] : [r.time]),
+          ...t.columns.map(c => {
+            const text = fieldText(c, r.values[c.key]);
+            const state = r.goals?.[c.key];
+            return text && state && state !== 'met' ? `${text} (${state})` : text;
+          }),
+          r.notes || '',
+        ]);
+        block(`### ${t.name} (${daily ? 'daily totals' : 'every entry'})`, '', table(headers, rows));
+      }
+    }
+
+    /* ── Supplements / checklists ── */
+    if (showChecklists) {
+      for (const c of report.checklists) {
+        const n = c.daysCounted;
+        const dayNums = keys => keys.map(k => String(Number(k.slice(8)))).join(', ');
+        const rows = c.items.map(i => {
+          const taken = new Set(i.days);
+          const missed = Array.from({ length: n }, (_, k) => util.addDays(meta.first, k)).filter(k => !taken.has(k));
+          const days = !i.daysTaken ? 'none' : !missed.length ? 'every day'
+            : i.daysTaken >= n / 2 ? `missed ${dayNums(missed)}` : `taken ${dayNums(i.days)}`;
+          return [i.name, [i.dose != null ? num(i.dose, 2) : '', i.unit || ''].join(' ').trim(), `${i.daysTaken} of ${n}${n ? ` (${Math.round((i.daysTaken / n) * 100)}%)` : ''}`, days];
+        });
+        block(`## ${c.name}`, '', `Days of ${meta.label} counted: ${n}. Day numbers are dates in ${meta.label}.`, '', table(['Item', 'Dose', 'Days taken', 'Which days'], rows));
+      }
+    }
+
+    /* ── Every workout ── */
+    if (on('workouts') && hasWorkouts) {
+      block('## Every workout');
+      for (const w of report.workouts) {
+        block(`### ${dayLabel(w.dayKey)} — ${w.name}${w.durationMin ? ` (${util.fmtDuration(w.durationMin)})` : ''}`);
+        const facts = [w.time, w.template && w.template !== w.name && `template: ${w.template}`,
+          plural(w.workingSets, 'working set'), w.volume ? `volume ${num(w.volume, 0)} ${U.mass}` : ''].filter(Boolean);
+        block(facts.join(' · '));
+        if (w.notes) block(`Notes: ${oneLine(w.notes)}`);
+        for (const x of w.exercises) {
+          const extra = [x.notes && `Note: ${oneLine(x.notes)}.`, x.volumePR != null && `PR: session volume ${num(x.volumePR, 0)} ${U.mass}.`].filter(Boolean);
+          block(`**${x.name}**${x.primary.length ? ` (${x.primary.join(', ')})` : ''}${extra.length ? ` — ${extra.join(' ')}` : ''}`);
+          const typed = x.sets.some(s => s.type !== 'working');
+          const undone = x.sets.some(s => !s.done);
+          block(table(['Set', 'Type', `Weight (${U.mass})`, 'Reps', 'RPE', 'RIR', 'Done', 'PR'], x.sets.map(s => [
+            String(s.n),
+            typed ? SET_TYPES[s.type] || s.type : '',
+            s.bodyweight ? 'BW' : num(s.weight),
+            s.reps != null ? String(s.reps) : '',
+            s.rpe != null ? num(s.rpe, 1) : '',
+            s.rir != null ? num(s.rir, 1) : '',
+            undone ? (s.done ? 'yes' : 'no') : '',
+            s.prs.length ? `PR (${s.prs.map(p => PR_WORDS[p] || p).join(', ')})` : '',
+          ])));
+        }
+      }
+    }
+
+    out.push('---', '', `Generated ${stamp(meta.generatedAt)}${meta.appVersion ? ` by Health Log ${meta.appVersion}` : ' by Health Log'}.`);
+    return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+  }
+
+  HL.monthReport = { MONTHS, DEFAULT_TARGET, SIZE_WARN_BYTES, SECTIONS, monthBounds, shiftMonth, buildMonthReport, renderReportMarkdown, byteSize };
 })(globalThis.HL = globalThis.HL || {});
