@@ -1118,19 +1118,159 @@ Generated 2026-11-01 10:00 by Health Log v16.
   });
 
   /* ════════════════════════════════════
+     FILE HAND-OFF — share / download / copy, with the browser APIs faked
+     ════════════════════════════════════ */
+  suite('File hand-off: backup, share, download, copy', () => {
+    const { data, backup, claudeExport } = HL;
+    const own = (obj, key, value) => Object.defineProperty(obj, key, { value, configurable: true, writable: true });
+
+    // Fakes navigator.canShare / share / clipboard, downloads and execCommand for one test
+    async function withBrowser({ canShare = () => false, share, clipboard, execCommand } = {}, fn) {
+      const seen = { shared: [], downloads: [], copied: [] };
+      own(navigator, 'canShare', canShare);
+      own(navigator, 'share', share || (async ({ files }) => { seen.shared.push(files[0]); }));
+      own(navigator, 'clipboard', clipboard);
+      const create = URL.createObjectURL;
+      const click = HTMLAnchorElement.prototype.click;
+      const exec = document.execCommand;
+      URL.createObjectURL = blob => { seen.downloads.push({ file: blob }); return 'blob:test'; };
+      HTMLAnchorElement.prototype.click = function () { Object.assign(seen.downloads.at(-1), { name: this.download, href: this.getAttribute('href') }); };
+      document.execCommand = execCommand || (() => false);
+      try { await fn(seen); } finally {
+        delete navigator.canShare;
+        delete navigator.share;
+        delete navigator.clipboard;
+        URL.createObjectURL = create;
+        HTMLAnchorElement.prototype.click = click;
+        document.execCommand = exec;
+      }
+    }
+
+    /* ── The JSON backup, through the real exportBackup ── */
+    const stores = { entries: [{ id: 'e1', type: 'body', dayKey: '2026-10-02', timestamp: '2026-10-02T07:00:00.000-07:00', values: { weight: 80 }, updatedAt: '2026-10-02T14:00:00.000Z' }] };
+    const settings = { units: imperial, theme: 'dark', exportGoal: 'Bench 275', exportSections: { workouts: false } };
+    let metaWrites = [];
+    Object.assign(HL.repo, { snapshot: () => stores, getSettings: () => settings, setMeta: (k, v) => metaWrites.push(k) });
+
+    // Exactly what exportBackup handed to deliver() before the split: this name, this type, JSON.stringify(buildBackup(...))
+    async function assertBackupFile(file) {
+      assert.eq(file.name, `healthlog-backup-${util.dayKey()}.json`);
+      assert.eq(file.type, 'application/json');
+      const text = await file.text();
+      assert.eq(text, JSON.stringify(backup.buildBackup(stores, settings, JSON.parse(text).exportedAt)));
+      assert.eq(JSON.parse(text).settings.exportGoal, 'Bench 275', 'new settings fields travel in the backup');
+    }
+
+    test('backup: shared as the same JSON file as before', () => withBrowser({ canShare: () => true }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.shared.length, seen.downloads.length, metaWrites], [1, 0, ['lastExportAt']]);
+      await assertBackupFile(seen.shared[0]);
+    }));
+    test('backup: downloaded as the same file when sharing files isn’t possible', () => withBrowser({}, async seen => {
+      await data.exportBackup();
+      assert.eq([seen.shared.length, seen.downloads.length, seen.downloads[0].name, seen.downloads[0].href], [0, 1, `healthlog-backup-${util.dayKey()}.json`, 'blob:test']);
+      await assertBackupFile(seen.downloads[0].file);
+    }));
+    test('backup: closing the share sheet does nothing (no download, not marked as backed up)', () => withBrowser({
+      canShare: () => true, share: async () => { throw new DOMException('closed', 'AbortError'); },
+    }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.downloads.length, metaWrites], [0, []]);
+    }));
+    test('backup: a refused share still falls back to a download', () => withBrowser({
+      canShare: () => true, share: async () => { throw new DOMException('no', 'NotAllowedError'); },
+    }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.downloads.length, metaWrites], [1, ['lastExportAt']]);
+      await assertBackupFile(seen.downloads[0].file);
+    }));
+
+    /* ── The pieces the Export for Claude buttons use ── */
+    test('shareFile: shared / cancelled / failed', () => withBrowser({}, async () => {
+      const file = data.makeFile('health-log-2026-10.md', '# hi', 'text/markdown');
+      own(navigator, 'share', async () => {});
+      assert.eq(await data.shareFile(file), 'shared');
+      own(navigator, 'share', async () => { throw new DOMException('x', 'AbortError'); });
+      assert.eq(await data.shareFile(file), 'cancelled');
+      own(navigator, 'share', async () => { throw new TypeError('x'); });
+      assert.eq(await data.shareFile(file), 'failed');
+    }));
+    test('shareFile calls navigator.share synchronously (iOS needs the tap’s user gesture)', () => withBrowser({}, async () => {
+      let called = false;
+      own(navigator, 'share', async () => { called = true; });
+      const pending = data.shareFile(data.makeFile('a.md', 'x', 'text/markdown'));
+      assert.ok(called, 'share was not called before the first await');
+      await pending;
+    }));
+    test('share type: Markdown, else plain text, else none (button hidden)', () => {
+      const run = accept => {
+        own(navigator, 'canShare', ({ files }) => accept.includes(files[0].type));
+        try { return claudeExport.shareType(); } finally { delete navigator.canShare; }
+      };
+      assert.eq([run(['text/markdown', 'text/plain']), run(['text/plain']), run([])], ['text/markdown', 'text/plain', null]);
+    });
+    test('copyText: clipboard API first', () => withBrowser({ clipboard: { writeText: async t => { copiedText = t; } } }, async seen => {
+      assert.eq(await data.copyText('# report'), true);
+      assert.eq(copiedText, '# report');
+      assert.eq(seen.downloads.length, 0);
+    }));
+    let copiedText = null;
+    test('copyText: falls back to execCommand when the clipboard API refuses', () => withBrowser({
+      clipboard: { writeText: async () => { throw new DOMException('no', 'NotAllowedError'); } },
+      execCommand: cmd => { copiedText = cmd === 'copy' ? document.querySelector('textarea[aria-hidden]')?.value : null; return true; },
+    }, async () => {
+      copiedText = null;
+      assert.eq(await data.copyText('fallback text'), true);
+      assert.eq(copiedText, 'fallback text');
+      assert.ok(!document.querySelector('body > textarea'), 'temporary textarea removed');
+    }));
+    test('copyText: no clipboard API at all, and execCommand fails → false', () => withBrowser({ execCommand: () => false }, async () => {
+      assert.eq(await data.copyText('x'), false);
+    }));
+
+    test('Export for Claude builds health-log-YYYY-MM.md synchronously from the repo', () => {
+      const at = (k, t) => `${k}T${t}:00.000-07:00`;
+      const entries = [{ id: 'b1', type: 'body', dayKey: '2026-10-02', timestamp: at('2026-10-02', '07:00'), values: { weight: 80 }, notes: '' }];
+      Object.assign(HL.repo, {
+        entries: () => entries, trackers: () => schema.BUILTIN_TRACKERS, all: () => [],
+        getSettings: () => ({ units: metric, weekStart: 1, exportGoal: 'Cut to 78 kg' }),
+      });
+      const out = claudeExport.build('2026-10');
+      assert.eq(out.filename, 'health-log-2026-10.md');
+      assert.ok(out.text.startsWith('# Health Log report — October 2026\n'));
+      assert.ok(out.text.includes('> Cut to 78 kg'));
+      assert.eq(out.bytes, HL.monthReport.byteSize(out.text));
+      Object.assign(HL.repo, { getSettings: () => settings });
+    });
+    test('default month: last month when it has logs, else this month; months after this one never count', () => {
+      const e = k => ({ dayKey: k });
+      assert.eq(claudeExport.monthsWithData([e('2026-08-01'), e('2026-10-31'), e('2026-12-01'), { dayKey: '2026-09-03', source: { app: 'demo' } }], '2026-11'), ['2026-08', '2026-10']);
+      assert.eq(claudeExport.defaultMonth(['2026-08', '2026-10'], '2026-11'), '2026-10');
+      assert.eq(claudeExport.defaultMonth(['2026-08'], '2026-11'), '2026-11');
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');
   let pass = 0, fail = 0;
-  for (const s of suites) {
-    const items = s.tests.map(t => {
-      try { t.fn(); pass++; return `<li class="pass">✓ ${util.esc(t.name)}</li>`; }
-      catch (err) { fail++; return `<li class="fail">✗ ${util.esc(t.name)}<pre>${util.esc(err.message)}</pre></li>`; }
-    });
-    results.insertAdjacentHTML('beforeend', `<h2>${util.esc(s.name)}</h2><ul>${items.join('')}</ul>`);
-  }
-  const summary = document.getElementById('summary');
-  summary.textContent = `${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed`;
-  summary.className = fail ? 'fail' : 'pass';
-  document.title = `${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail} — Health Log tests`;
+  // Tests may return a promise (the file hand-off ones); each runs to completion before the next
+  (async () => {
+    for (const s of suites) {
+      const items = [];
+      for (const t of s.tests) {
+        try { await t.fn(); pass++; items.push(`<li class="pass">✓ ${util.esc(t.name)}</li>`); }
+        catch (err) { fail++; items.push(`<li class="fail">✗ ${util.esc(t.name)}<pre>${util.esc(err.message)}</pre></li>`); }
+      }
+      results.insertAdjacentHTML('beforeend', `<h2>${util.esc(s.name)}</h2><ul>${items.join('')}</ul>`);
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = `${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed`;
+    summary.className = fail ? 'fail' : 'pass';
+    document.title = `${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail} — Health Log tests`;
+  })();
 })(globalThis.HL);

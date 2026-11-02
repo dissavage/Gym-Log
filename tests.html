@@ -28,6 +28,10 @@
   <script src="js/legacy.js"></script>
   <script src="js/demo.js"></script>
   <script src="js/export.js"></script>
+  <!-- data.js picks up HL.repo when it loads; tests.js fills in this stand-in (no IndexedDB here) -->
+  <script>HL.repo = {}; HL.toast = () => {};</script>
+  <script src="js/ui/data.js"></script>
+  <script src="js/ui/claude-export.js"></script>
   <script src="tests/tests.js"></script>
 </body>
 </html>

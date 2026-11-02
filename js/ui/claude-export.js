@@ -63,6 +63,12 @@
     return { report, text, bytes: monthReport.byteSize(text), filename: `health-log-${month}.md` };
   }
 
+  // The type to share the .md as: Markdown where the browser accepts it, else the same file as plain text; null = no file sharing
+  function shareType() {
+    const accepts = type => HL.data.canShareFile(HL.data.makeFile('health-log.md', '#', type));
+    return accepts('text/markdown') ? 'text/markdown' : accepts('text/plain') ? 'text/plain' : null;
+  }
+
   /* ════════════════════════════════════
      SHEET
      ════════════════════════════════════ */
@@ -73,6 +79,7 @@
     let saveGoal = () => {};
     const s = repo.getSettings();
     const sections = sectionChoice();
+    const sharing = shareType();
 
     const body = `
       <p class="field-hint block-gap">One month of your logs as a Markdown file you can attach to a Claude chat for analysis.</p>
@@ -93,7 +100,7 @@
           <label class="check-inline"><input type="checkbox" name="section" value="${k}" ${sections[k] ? 'checked' : ''}> ${esc(SECTION_LABELS[k])}</label>`).join('')}
       </fieldset>
       <div class="cx-actions">
-        <button type="button" class="btn btn-primary btn-block" data-cx="share">Share to Claude</button>
+        <button type="button" class="btn btn-primary btn-block" data-cx="share" ${sharing ? '' : 'hidden'}>Share to Claude</button>
         <div class="cx-row">
           <button type="button" class="btn btn-ghost" data-cx="download">Download .md</button>
           <button type="button" class="btn btn-ghost" data-cx="copy">Copy</button>
@@ -146,10 +153,37 @@
           refresh();
         });
 
+        const say = text => { $('#cx-status').textContent = text; };
+        const done = what => say(`${what} Now attach it to a Claude chat.`);
+
+        // Everything up to the share / clipboard call is synchronous: iOS only allows them inside the tap
+        function handOff(act) {
+          saveGoal();   // a goal typed a moment ago belongs in the file
+          const { report, text, filename } = build(month);
+          if (report.empty) return;
+          if (act === 'share') {
+            HL.data.shareFile(HL.data.makeFile(filename, text, sharing)).then(result => {
+              if (result === 'shared') done('Shared.');
+              else if (result === 'failed') say('Couldn’t open the share sheet. Use Download .md or Copy instead.');
+              // 'cancelled': the person closed the sheet, nothing to say
+            });
+          } else if (act === 'download') {
+            HL.data.downloadFile(HL.data.makeFile(filename, text, 'text/markdown'));
+            done(`Downloaded ${filename}.`);
+          } else {
+            HL.data.copyText(text, api.body).then(ok => {
+              if (!ok) { say('Couldn’t copy on this device. Use Download .md instead.'); return; }
+              HL.toast('Copied');
+              done('Copied.');
+            });
+          }
+        }
+
         api.body.addEventListener('click', e => {
           const act = e.target.closest('[data-cx]')?.dataset.cx;
           if (act === 'prev') { const m = months.filter(x => x < month); if (m.length) { month = m[m.length - 1]; refresh(); } }
           if (act === 'next') { const m = months.find(x => x > month); if (m) { month = m; refresh(); } }
+          if (act === 'share' || act === 'download' || act === 'copy') handOff(act);
         });
 
         refresh();
@@ -184,5 +218,5 @@
     return true;
   }
 
-  HL.claudeExport = { sectionHtml, onClick, open, build, monthsWithData, defaultMonth };
+  HL.claudeExport = { sectionHtml, onClick, open, build, shareType, monthsWithData, defaultMonth };
 })(globalThis.HL = globalThis.HL || {});
