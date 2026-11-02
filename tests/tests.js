@@ -981,7 +981,7 @@ Please analyze my progress, point out what's working and what's lagging, and sug
 - Days with a log: 2 of 31
 - Workouts: 1 (0.2 per week), average 1h 04m
 - Working sets: 2; volume 513 kg
-- PRs: 3
+- PRs: 1 exercise
 - Logging streak: longest 2 days in the month; 0 days running at month end
 - Bodyweight: 80 kg (1 weigh-in)
 
@@ -1033,24 +1033,16 @@ Target for every muscle: 10–20 sets per week.
 
 ## Every workout
 
+One line per exercise: primary muscles in brackets, then every set in order as weight×reps in kg. Unlabelled sets are working sets; warm-up, drop and failure sets are labelled. "@RPE 8" and "RIR 2" are the logged effort; [PR: …] marks a set that set a personal record.
+
 ### Thu Oct 1 — Push (1h 04m)
 
 08:00 · 2 working sets · volume 513 kg
 
 Notes: Good | fast / slept well
 
-**Barbell Bench Press** (Chest) — Note: paused. PR: session volume 513 kg.
-
-| Set | Type | Weight (kg) | Reps | RPE | PR |
-| --- | --- | --- | --- | --- | --- |
-| 1 | warm-up | 60 | 10 |  |  |
-| 2 | working | 102.5 | 5 | 8 | PR (weight, e1RM) |
-
-**Pull-up** (Lats)
-
-| Set | Weight (kg) | Reps |
-| --- | --- | --- |
-| 1 | BW | 15 |
+- **Barbell Bench Press** (Chest): warm-up 60×10, 102.5×5 @RPE 8 [PR: weight, e1RM] — Note: paused. PR: session volume 513 kg.
+- **Pull-up** (Lats): BW×15
 
 ---
 
@@ -1094,6 +1086,25 @@ Generated 2026-11-01 10:00 by Health Log v16.
       assert.ok(!off.includes('partial'), 'weekly explanation goes with the section');
       assert.ok(off.includes('## Summary') && off.includes('## Goals & split'));
       for (const h of ['## Every workout', '## Exercise progress', '## Weekly sets', '## Body & daily', '## Supplements', '### Compared with']) assert.ok(md.includes(h), `full report has ${h}`);
+    });
+    test('markdown: one line per exercise keeps every set, effort, PR and note', () => {
+      assert.ok(md.includes('- **Barbell Bench Press** (Chest): warm-up 132.3×10, 226×5 @RPE 8 [PR: weight, e1RM], 226×4 @RPE 9 — Note: paused. PR: session volume 2,034 lb.\n'), 'bench line');
+      assert.ok(md.includes('- **Pull-up** (Lats): BW×10\n'), 'pull-up line');
+      assert.ok(md.includes('Notes: Felt strong\n'), 'session notes');
+      const r = monthReport.buildMonthReport('2026-10', deps({ entries: [log('workout', '2026-10-09', '18:00', { name: 'Arms', exercises: [
+        { exerciseId: 'ex-ez-bar-curl', notes: 'elbow | ok\nnext time 3 sets', sets: [
+          set(40, 8, { rir: 2 }), set(40, 6, { setType: 'failure', rpe: 10 }), set(30, 10, { setType: 'drop' }), set(25, 12, { done: false })] },
+      ] })] }));
+      assert.ok(monthReport.renderReportMarkdown(r).includes(
+        '- **EZ-Bar Curl** (Biceps): 88.2×8 RIR 2, failure 88.2×6 @RPE 10, drop 66.1×10, 55.1×12 (not ticked) — Note: elbow | ok / next time 3 sets.\n'));
+    });
+    test('markdown: body fat and tape measurements get their own table', () => {
+      assert.ok(md.includes('### Body (every entry)\n\n| Date | Time | Bodyweight (lb) |\n| --- | --- | --- |\n| Fri Oct 2 | 07:00 | 176.4 |\n| Fri Oct 30 | 07:00 | 174.2 |\n'), 'body table');
+      assert.ok(md.includes('### Measurements (every entry)\n\n| Date | Time | Body fat (%) | Waist (in) |\n| --- | --- | --- | --- |\n| Fri Oct 2 | 07:00 | 18.5 |  |\n| Fri Oct 30 | 07:00 |  | 34 |\n'), 'measurements table');
+    });
+    test('markdown: PRs are counted per exercise in the summary', () => {
+      assert.eq(oct.stats.prExercises, 1);
+      assert.ok(md.includes('- PRs: 1 exercise\n'));
     });
     test('markdown: the user goal goes at the top as a quote', () => {
       const r = monthReport.buildMonthReport('2026-10', deps({ settings: { units: imperial, exportGoal: 'Lean bulk to 185 lb\nBench 275 by March' } }));

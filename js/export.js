@@ -132,6 +132,7 @@
 
     /* ── Workouts, every set, PRs marked ── */
     let prCount = 0;
+    const prExercises = new Set();
     const prDone = new Set();
     const workouts = monthWorkouts.map(e => {
       const v = e.values || {};
@@ -143,6 +144,7 @@
         const first = !prDone.has(`${e.id}|${ex.exerciseId}`);
         prDone.add(`${e.id}|${ex.exerciseId}`);
         if (first) prCount += prs.length;
+        if (prs.length) prExercises.add(ex.exerciseId);
         const marks = new Map();
         for (const p of prs) if (p.set) marks.set(p.set, [...(marks.get(p.set) || []), p.type]);
         const volumePR = first ? prs.find(p => p.type === 'volume') : null;
@@ -269,7 +271,10 @@
       if (!rows.length) continue;
       const columns = fields
         .filter(f => rows.some(r => r.values[f.key] != null))
-        .map(f => ({ key: f.key, label: f.label, kind: f.kind, unit: unitOf(f, prefs), goal: hasGoal(f) ? { target: goalTarget(f, prefs), dir: f.goal.dir } : null }));
+        .map(f => ({
+          key: f.key, label: f.label, kind: f.kind, unit: unitOf(f, prefs), primary: !!f.primary,
+          goal: hasGoal(f) ? { target: goalTarget(f, prefs), dir: f.goal.dir } : null,
+        }));
       dailyTrackers.push({ key: t.key, name: t.name, mode: daily ? 'daily' : 'entries', columns, rows });
     }
 
@@ -375,6 +380,7 @@
     stats.streakAtEnd = domain.streaks(everyDay, ref).current;
     stats.longestStreak = domain.streaks([...new Set(monthEntries.map(e => e.dayKey))], ref).longest;
     stats.prs = prCount;
+    stats.prExercises = prExercises.size;
     stats.goalDays = [];
     for (const t of trackers) {
       if (t.kind !== 'entry') continue;
@@ -484,6 +490,18 @@
     return `${DIR_WORDS[g.dir] || 'at least'} ${target}`;
   }
 
+  // "warm-up 60×10", "102.5×5 @RPE 8 [PR: weight, e1RM]", "BW×15 RIR 2" — the set's position is its order in the line
+  function setText(s) {
+    const parts = [];
+    if (s.type !== 'working') parts.push(SET_TYPES[s.type] || s.type);
+    parts.push(`${s.bodyweight ? 'BW' : num(s.weight)}×${s.reps ?? '?'}`);
+    if (s.rpe != null) parts.push(`@RPE ${num(s.rpe, 1)}`);
+    if (s.rir != null) parts.push(`RIR ${num(s.rir, 1)}`);
+    if (s.prs.length) parts.push(`[PR: ${s.prs.map(p => PR_WORDS[p] || p).join(', ')}]`);
+    if (!s.done) parts.push('(not ticked)');
+    return parts.join(' ');
+  }
+
   const stamp = iso => (/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(iso || '') ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : String(iso || ''));
 
   /**
@@ -544,7 +562,7 @@
     if (stats.workouts) {
       summary.push(`Workouts: ${stats.workouts}${stats.avgWeeklySessions != null ? ` (${num(stats.avgWeeklySessions, 1)} per week)` : ''}${stats.avgSessionMin ? `, average ${util.fmtDuration(stats.avgSessionMin)}` : ''}`);
       summary.push(`Working sets: ${num(stats.workingSets, 0)}; volume ${num(stats.volume, 0)} ${U.mass}`);
-      summary.push(`PRs: ${stats.prs}`);
+      summary.push(`PRs: ${stats.prExercises ? plural(stats.prExercises, 'exercise') : 'none'}`);
     }
     summary.push(`Logging streak: longest ${plural(stats.longestStreak, 'day')} in the month; ${plural(stats.streakAtEnd, 'day')} running ${meta.inProgress ? 'as of today' : 'at month end'}`);
     const avgs = [
@@ -635,17 +653,24 @@
       block('## Body & daily trackers');
       for (const t of report.dailyTrackers) {
         const daily = t.mode === 'daily';
-        const headers = ['Date', ...(daily ? [] : ['Time']), ...t.columns.map(columnHeader), 'Notes'];
-        const rows = t.rows.map(r => [
-          dayLabel(r.dayKey), ...(daily ? [] : [r.time]),
-          ...t.columns.map(c => {
-            const text = fieldText(c, r.values[c.key]);
-            const state = r.goals?.[c.key];
-            return text && state && state !== 'met' ? `${text} (${state})` : text;
-          }),
-          r.notes || '',
-        ]);
-        block(`### ${t.name} (${daily ? 'daily totals' : 'every entry'})`, '', table(headers, rows));
+        // Body: bodyweight (with the entry's notes) in one table, body fat and tape measurements in another
+        const parts = t.key === 'body'
+          ? [[t.name, t.columns.filter(c => c.primary), true], ['Measurements', t.columns.filter(c => !c.primary), false]]
+          : [[t.name, t.columns, true]];
+        for (const [name, cols, withNotes] of parts) {
+          const rows = t.rows.filter(r => cols.some(c => r.values[c.key] != null) || (withNotes && r.notes));
+          if (!rows.length) continue;
+          const headers = ['Date', ...(daily ? [] : ['Time']), ...cols.map(columnHeader), ...(withNotes ? ['Notes'] : [])];
+          block(`### ${name} (${daily ? 'daily totals' : 'every entry'})`, '', table(headers, rows.map(r => [
+            dayLabel(r.dayKey), ...(daily ? [] : [r.time]),
+            ...cols.map(c => {
+              const text = fieldText(c, r.values[c.key]);
+              const state = r.goals?.[c.key];
+              return text && state && state !== 'met' ? `${text} (${state})` : text;
+            }),
+            ...(withNotes ? [r.notes || ''] : []),
+          ])));
+        }
       }
     }
 
@@ -667,29 +692,18 @@
 
     /* ── Every workout ── */
     if (on('workouts') && hasWorkouts) {
-      block('## Every workout');
+      block('## Every workout', '',
+        `One line per exercise: primary muscles in brackets, then every set in order as weight×reps in ${U.mass}. Unlabelled sets are working sets; warm-up, drop and failure sets are labelled. "@RPE 8" and "RIR 2" are the logged effort; [PR: …] marks a set that set a personal record.`);
       for (const w of report.workouts) {
         block(`### ${dayLabel(w.dayKey)} — ${w.name}${w.durationMin ? ` (${util.fmtDuration(w.durationMin)})` : ''}`);
         const facts = [w.time, w.template && w.template !== w.name && `template: ${w.template}`,
           plural(w.workingSets, 'working set'), w.volume ? `volume ${num(w.volume, 0)} ${U.mass}` : ''].filter(Boolean);
         block(facts.join(' · '));
         if (w.notes) block(`Notes: ${oneLine(w.notes)}`);
-        for (const x of w.exercises) {
+        block(...w.exercises.map(x => {
           const extra = [x.notes && `Note: ${oneLine(x.notes)}.`, x.volumePR != null && `PR: session volume ${num(x.volumePR, 0)} ${U.mass}.`].filter(Boolean);
-          block(`**${x.name}**${x.primary.length ? ` (${x.primary.join(', ')})` : ''}${extra.length ? ` — ${extra.join(' ')}` : ''}`);
-          const typed = x.sets.some(s => s.type !== 'working');
-          const undone = x.sets.some(s => !s.done);
-          block(table(['Set', 'Type', `Weight (${U.mass})`, 'Reps', 'RPE', 'RIR', 'Done', 'PR'], x.sets.map(s => [
-            String(s.n),
-            typed ? SET_TYPES[s.type] || s.type : '',
-            s.bodyweight ? 'BW' : num(s.weight),
-            s.reps != null ? String(s.reps) : '',
-            s.rpe != null ? num(s.rpe, 1) : '',
-            s.rir != null ? num(s.rir, 1) : '',
-            undone ? (s.done ? 'yes' : 'no') : '',
-            s.prs.length ? `PR (${s.prs.map(p => PR_WORDS[p] || p).join(', ')})` : '',
-          ])));
-        }
+          return `- **${x.name}**${x.primary.length ? ` (${x.primary.join(', ')})` : ''}: ${x.sets.map(setText).join(', ') || 'no sets'}${extra.length ? ` — ${extra.join(' ')}` : ''}`;
+        }));
       }
     }
 
