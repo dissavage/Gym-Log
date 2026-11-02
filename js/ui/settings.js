@@ -50,6 +50,7 @@
           </button>
         </div>
       </section>
+      ${HL.claudeExport.sectionHtml()}
       ${HL.data.sectionHtml()}`;
     HL.data.fillStorage(el.querySelector('#storage-box'));
   }
@@ -62,7 +63,7 @@
   }
 
   function onClick(e) {
-    if (HL.trackers.onClick(e) || HL.data.onClick(e)) return;
+    if (HL.trackers.onClick(e) || HL.data.onClick(e) || HL.claudeExport.onClick(e)) return;
     if (e.target.closest('[data-act="exercises"]')) HL.exercises.pick({ manage: true });
   }
 
