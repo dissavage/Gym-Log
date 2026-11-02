@@ -554,6 +554,7 @@
       howTo.push('Volume = weight × reps over working and failure sets; warm-ups, drop sets and BW sets are excluded.');
       howTo.push('Est. 1RM (e1RM) uses the Epley formula and is only calculated for sets of 12 reps or fewer; "—" means no set qualified (all over 12 reps, or bodyweight only).');
       howTo.push('PR = personal record against every earlier session (heaviest weight, e1RM, most reps at that weight or heavier, or session volume). An exercise\'s first-ever session is a baseline, not a PR.');
+      howTo.push('"started 13:25" on a workout is its logged start time (local, 24-hour clock).');
     }
     if (showWeekly) howTo.push(`Weekly sets = working and failure sets per muscle; secondary muscles count as half a set. "partial" weeks overlap another month, so only their days in ${meta.label} are counted.`);
     if (report.goals.length) howTo.push('Goals: "met" for an "at most" goal means at or under the limit; "about" goals count as met within ±10%. In daily tables, "(under)" or "(over)" after a value means that day missed its goal; no mark means met.');
@@ -702,7 +703,7 @@
         `One line per exercise: primary muscles in brackets, then every set in order as weight×reps in ${U.mass}. Unlabelled sets are working sets; warm-up, drop and failure sets are labelled. "@RPE 8" and "RIR 2" are the logged effort; [PR: …] marks a set that set a personal record.`);
       for (const w of report.workouts) {
         block(`### ${dayLabel(w.dayKey)} — ${w.name}${w.durationMin ? ` (${util.fmtDuration(w.durationMin)})` : ''}`);
-        const facts = [w.time, w.template && w.template !== w.name && `template: ${w.template}`,
+        const facts = [w.time && `started ${w.time}`, w.template && w.template !== w.name && `template: ${w.template}`,
           plural(w.workingSets, 'working set'), w.volume ? `volume ${num(w.volume, 0)} ${U.mass}` : ''].filter(Boolean);
         block(facts.join(' · '));
         if (w.notes) block(`Notes: ${oneLine(w.notes)}`);
