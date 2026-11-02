@@ -13,25 +13,64 @@
   /* ════════════════════════════════════
      FILE OUT — share sheet on iPhone, download elsewhere
      ════════════════════════════════════ */
-  // Resolves true once the file was handed off; false if the person cancelled the share sheet
-  async function deliver(filename, text, mime) {
-    const file = new File([text], filename, { type: mime });
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: filename });
-        return true;
-      } catch (err) {
-        if (err.name === 'AbortError') return false;
-        // Some browsers refuse share outside certain contexts; fall back to a download
-      }
+  const makeFile = (filename, text, mime) => new File([text], filename, { type: mime });
+  const canShareFile = file => !!navigator.canShare?.({ files: [file] });
+
+  // Resolves 'shared', 'cancelled' (the person closed the share sheet) or 'failed'.
+  // navigator.share runs before the first await, so a call straight from a tap keeps iOS's user gesture.
+  async function shareFile(file) {
+    try {
+      await navigator.share({ files: [file], title: file.name });
+      return 'shared';
+    } catch (err) {
+      return err.name === 'AbortError' ? 'cancelled' : 'failed';
     }
+  }
+
+  function downloadFile(file) {
     const url = URL.createObjectURL(file);
-    const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+    const a = Object.assign(document.createElement('a'), { href: url, download: file.name });
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  // Resolves true once the file was handed off; false if the person cancelled the share sheet
+  async function deliver(filename, text, mime) {
+    const file = makeFile(filename, text, mime);
+    if (canShareFile(file)) {
+      const result = await shareFile(file);
+      if (result === 'shared') return true;
+      if (result === 'cancelled') return false;
+      // Some browsers refuse share outside certain contexts; fall back to a download
+    }
+    downloadFile(file);
     return true;
+  }
+
+  // Clipboard API, else the old select-and-copy (older iOS, or a page that isn't allowed the clipboard).
+  // `host` is where the temporary textarea goes: inside an open sheet, since everything else is inert.
+  async function copyText(text, host = document.body) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch { /* fall back below */ }
+    }
+    const back = document.activeElement;
+    const ta = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+    ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';
+    host.appendChild(ta);
+    ta.focus({ preventScroll: true });
+    ta.select();
+    ta.setSelectionRange(0, text.length);   // iOS ignores select() on its own
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    back?.focus?.({ preventScroll: true });
+    return ok;
   }
 
   async function exportBackup() {
@@ -341,5 +380,8 @@
       </div>`;
   }
 
-  HL.data = { sectionHtml, onClick, fillStorage, requestPersist, reminderHtml, installHintHtml, pickFile };
+  HL.data = {
+    sectionHtml, onClick, fillStorage, requestPersist, reminderHtml, installHintHtml, pickFile,
+    makeFile, canShareFile, shareFile, downloadFile, deliver, copyText, exportBackup,
+  };
 })(globalThis.HL = globalThis.HL || {});

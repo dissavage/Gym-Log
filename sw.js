@@ -5,7 +5,7 @@
    Gym Tracker's caches on the same origin. A new version waits until the user
    taps "Refresh" in the update banner.
    ════════════════════════════════════ */
-const VERSION = 'v16';
+const VERSION = 'v18';
 const STATIC = `healthlog-static-${VERSION}`;
 const PAGES = `healthlog-pages-${VERSION}`;
 const CHART_JS = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
@@ -15,9 +15,9 @@ const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/icon-maskable-512.png',
   'fonts/barlow-condensed-600.woff2', 'fonts/barlow-condensed-700.woff2', 'fonts/inter-latin-var.woff2',
-  'js/util.js', 'js/units.js', 'js/schema.js', 'js/domain.js', 'js/session.js', 'js/backup.js', 'js/legacy.js', 'js/demo.js', 'js/db.js', 'js/repo.js',
+  'js/util.js', 'js/units.js', 'js/schema.js', 'js/domain.js', 'js/session.js', 'js/backup.js', 'js/legacy.js', 'js/demo.js', 'js/export.js', 'js/db.js', 'js/repo.js',
   'js/ui/toast.js', 'js/ui/sheet.js', 'js/ui/entry.js', 'js/ui/rest.js', 'js/ui/duration.js', 'js/ui/exercises.js', 'js/ui/workout.js',
-  'js/ui/charts.js', 'js/ui/history.js', 'js/ui/insights.js', 'js/ui/trackers.js', 'js/ui/data.js', 'js/ui/legacy-import.js',
+  'js/ui/charts.js', 'js/ui/history.js', 'js/ui/insights.js', 'js/ui/trackers.js', 'js/ui/data.js', 'js/ui/legacy-import.js', 'js/ui/claude-export.js',
   'js/ui/today.js', 'js/ui/settings.js', 'js/app.js',
 ];
 

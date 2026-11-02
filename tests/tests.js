@@ -740,19 +740,561 @@
   });
 
   /* ════════════════════════════════════
+     MONTH REPORT (Export for Claude)
+     ════════════════════════════════════ */
+  suite('Month report (Export for Claude)', () => {
+    const { monthReport } = HL;
+    const at = (dayKey, time) => `${dayKey}T${time}:00.000-07:00`;
+    const log = (type, dayKey, time, values, extra = {}) =>
+      ({ id: `${type}-${dayKey}-${time}`, type, dayKey, timestamp: at(dayKey, time), values, notes: '', deletedAt: null, ...extra });
+    const set = (weightKg, reps, props = {}) => ({ setType: 'working', weightKg, reps, rpe: null, rir: null, done: true, ...props });
+    const BENCH = 'ex-barbell-bench-press';
+
+    const stepsTracker = {
+      id: 'tracker-steps', type: 'tracker', key: 'steps', name: 'Steps', kind: 'entry', builtIn: false, archived: false, order: 20,
+      fields: [
+        { key: 'steps', label: 'Steps', kind: 'number', step: 1, agg: 'sum', goal: null },
+        { key: 'felt', label: 'Felt', kind: 'text', agg: 'last', goal: null },
+      ],
+    };
+    const entries = [
+      log('workout', '2026-09-15', '09:00', { name: 'Push', templateId: 'tpl-push', durationMin: 50, exercises: [{ exerciseId: BENCH, notes: '', sets: [set(100, 5)] }] }),
+      log('workout', '2026-10-01', '08:00', {
+        name: 'Push', templateId: 'tpl-push', startedAt: at('2026-10-01', '08:00'), endedAt: at('2026-10-01', '09:04'), durationMin: 64,
+        exercises: [
+          { exerciseId: BENCH, notes: 'paused', sets: [set(60, 10, { setType: 'warmup' }), set(102.5, 5, { rpe: 8 }), set(102.5, 4, { rpe: 9 })] },
+          { exerciseId: 'ex-pull-up', notes: '', sets: [set(null, 10)] },
+        ],
+      }, { notes: 'Felt strong' }),
+      // Old-app style: no template, no duration, no RPE/RIR keys, no notes field at all
+      { id: 'legacy-1', type: 'workout', dayKey: '2026-10-31', timestamp: at('2026-10-31', '23:30'),
+        values: { name: 'Legs', exercises: [{ exerciseId: 'ex-back-squat', sets: [{ setType: 'working', weightKg: 140, reps: 15, done: true }] }] } },
+      log('workout', '2026-11-01', '00:10', { name: 'Push', templateId: 'tpl-push', durationMin: 30, exercises: [{ exerciseId: BENCH, sets: [set(200, 1)] }] }),
+      log('body', '2026-09-30', '07:00', { weight: 81 }),
+      log('body', '2026-10-02', '07:00', { weight: 80, bodyFat: 18.5 }),
+      log('body', '2026-10-30', '07:00', { weight: 79, waist: 86.36 }),
+      log('body', '2026-10-04', '07:00', { weight: 60 }, { deletedAt: '2026-10-04T08:00:00.000Z' }),
+      log('nutrition', '2026-10-01', '08:00', { food: 'Oats', calories: 500, protein: 30 }),
+      log('nutrition', '2026-10-01', '13:00', { food: 'Chicken bowl', calories: 1700, protein: 120 }),
+      log('nutrition', '2026-10-03', '12:00', { food: 'Demo pasta', calories: 900 }, { source: { app: 'demo' } }),
+      log('hydration', '2026-10-01', '10:00', { amount: 1000 }),
+      log('steps', '2026-10-05', '18:00', { steps: 8000 }),
+      log('steps', '2026-10-06', '18:00', { felt: 'tired' }),
+      log('supplements', '2026-10-01', '08:15', { itemId: 'it-creatine', item: 'Creatine', dose: 5, unit: 'g' }),
+      log('supplements', '2026-10-02', '08:15', { itemId: 'it-creatine', item: 'Creatine', dose: 5, unit: 'g' }),
+      log('supplements', '2026-10-02', '08:20', { item: 'Fish oil' }),
+    ];
+    const deps = (over = {}) => ({
+      entries,
+      trackers: [...schema.BUILTIN_TRACKERS, stepsTracker],
+      exercises: schema.BUILTIN_EXERCISES,
+      templates: [
+        { id: 'tpl-push', name: 'Push', order: 0, exercises: [{ exerciseId: BENCH, sets: 3 }] },
+        { id: 'tpl-old', name: 'Old split', order: 1, exercises: [], deletedAt: '2026-01-01T00:00:00.000Z' },
+      ],
+      checklistItems: [
+        { id: 'it-creatine', trackerType: 'supplements', name: 'Creatine', dose: 5, unit: 'g', active: true, order: 0 },
+        { id: 'it-zinc', trackerType: 'supplements', name: 'Zinc', dose: null, unit: '', active: true, order: 1 },
+      ],
+      settings: { units: imperial, weekStart: 1, effort: 'rpe' },
+      today: '2026-11-01', now: '2026-11-01T10:00:00.000-07:00', appVersion: 'v16', timezone: 'America/Los_Angeles',
+      isDemo: e => e.source?.app === 'demo',
+      ...over,
+    });
+    const oct = monthReport.buildMonthReport('2026-10', deps());
+
+    // Fails on any undefined, NaN or Infinity anywhere in the report
+    function clean(v, path = 'report') {
+      if (v === undefined) throw new Error(`${path} is undefined`);
+      if (typeof v === 'number' && !Number.isFinite(v)) throw new Error(`${path} is ${v}`);
+      if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) clean(x, `${path}.${k}`);
+    }
+
+    test('month bounds use local calendar days', () => {
+      assert.eq(monthReport.monthBounds('2026-10'), { monthKey: '2026-10', first: '2026-10-01', last: '2026-10-31', daysInMonth: 31, label: 'October 2026' });
+      assert.eq(monthReport.monthBounds('2028-02').daysInMonth, 29);
+      assert.eq(monthReport.shiftMonth('2026-01', -1), '2025-12');
+      assert.eq(monthReport.shiftMonth('2026-12', 1), '2027-01');
+      assert.throws(() => monthReport.monthBounds('2026-13'), /Not a month/);
+    });
+    test('first and last day are in; neighbours, deleted and demo logs are out', () => {
+      assert.eq(oct.workouts.map(w => w.dayKey), ['2026-10-01', '2026-10-31']);
+      assert.eq(oct.meta.daysLogged, 6);
+      assert.eq(oct.stats.bodyweight.weighIns, 2);
+    });
+    test('11:30 PM on the last day stays in the month (day key, not UTC)', () => {
+      assert.eq(new Date(entries[2].timestamp).getUTCDate(), 1, 'fixture sanity: it is already Nov 1 in UTC');
+      assert.eq(oct.workouts[1].time, '23:30');
+      assert.eq(oct.workouts[1].name, 'Legs');
+    });
+    test('meta', () => {
+      assert.eq(oct.meta.label, 'October 2026');
+      assert.eq(oct.meta.daysElapsed, 31);
+      assert.eq(oct.meta.inProgress, false);
+      assert.eq(oct.meta.weekStart, 'Monday');
+      assert.eq(oct.meta.units, { mass: 'lb', volume: 'oz', distance: 'mi', length: 'in' });
+      assert.eq(oct.meta.appVersion, 'v16');
+    });
+    test('the current month counts days only up to today', () => {
+      const r = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-15' }));
+      assert.eq([r.meta.daysElapsed, r.meta.inProgress, r.checklists[0].daysCounted], [15, true, 15]);
+    });
+    test('every set is listed in display units; empty weight is bodyweight', () => {
+      const [bench, pull] = oct.workouts[0].exercises;
+      assert.eq(bench.sets.map(s => [s.type, s.weight, s.reps, s.rpe]), [['warmup', 132.3, 10, null], ['working', 226, 5, 8], ['working', 226, 4, 9]]);
+      assert.eq([pull.sets[0].weight, pull.sets[0].bodyweight, pull.sets[0].reps], [null, true, 10]);
+      assert.eq(bench.primary, ['Chest']);
+      assert.eq(bench.notes, 'paused');
+    });
+    test('workout fields: template, duration, notes', () => {
+      const w = oct.workouts[0];
+      assert.eq([w.template, w.durationMin, w.notes, w.workingSets, w.volume], ['Push', 64, 'Felt strong', 3, 2034]);
+    });
+    test('old-style workout: missing fields become null, never undefined', () => {
+      const w = oct.workouts[1];
+      assert.eq([w.template, w.durationMin, w.notes], [null, null, null]);
+      assert.eq(w.exercises[0].sets[0], { n: 1, type: 'working', weight: 308.6, bodyweight: false, reps: 15, rpe: null, rir: null, done: true, prs: [] });
+      clean(oct);
+    });
+    test('PRs come from domain.sessionPRs; the first session is a baseline', () => {
+      const [bench, pull] = oct.workouts[0].exercises;
+      assert.eq(bench.sets.map(s => s.prs), [[], ['weight', 'e1rm'], []]);
+      assert.eq(bench.volumePR, 2034);
+      assert.eq(pull.sets[0].prs, []);
+      assert.eq(oct.stats.prs, 3);
+    });
+    test('exercise progress: this month vs before, volume excludes warm-ups and bodyweight', () => {
+      const byName = Object.fromEntries(oct.exerciseProgress.map(x => [x.name, x]));
+      assert.eq(oct.exerciseProgress.map(x => x.name), ['Back Squat', 'Barbell Bench Press', 'Pull-up']);
+      const b = byName['Barbell Bench Press'];
+      assert.eq([b.bestE1rm, b.bestE1rmBefore, b.change, b.workingSets, b.volume], [264, 257, 7, 2, 2034]);
+      assert.eq(b.topSet, { weight: 226, bodyweight: false, reps: 5 });
+      assert.eq([byName['Pull-up'].bestE1rm, byName['Pull-up'].volume, byName['Pull-up'].topSet.bodyweight], [null, 0, true]);
+    });
+    test('e1RM is null past 12 reps', () => {
+      const sq = oct.exerciseProgress.find(x => x.name === 'Back Squat');
+      assert.eq([sq.bestE1rm, sq.bestE1rmBefore, sq.change, sq.volume], [null, null, null, 4630]);
+    });
+    test('weekly sets: every overlapping week, edge weeks partial, only sets inside the month', () => {
+      const w = oct.weeklySets;
+      assert.eq(w.weeks.map(x => [x.start, x.partial]), [['2026-09-28', true], ['2026-10-05', false], ['2026-10-12', false], ['2026-10-19', false], ['2026-10-26', true]]);
+      const row = name => w.rows.find(r => r.muscle === name);
+      assert.eq(row('Chest').sets, [2, 0, 0, 0, 0], 'the Nov 1 bench session is not counted');
+      assert.eq(row('Quads').sets, [0, 0, 0, 0, 1]);
+      assert.eq(row('Biceps').sets, [0.5, 0, 0, 0, 0]);
+      assert.eq(row('Chest').target, [10, 20]);
+    });
+    test('nutrition: daily totals with goal state', () => {
+      const n = oct.dailyTrackers.find(t => t.key === 'nutrition');
+      assert.eq(n.mode, 'daily');
+      assert.eq(n.columns.map(c => c.key), ['food', 'calories', 'protein']);
+      assert.eq(n.rows, [{ dayKey: '2026-10-01', values: { food: 'Oats; Chicken bowl', calories: 2200, protein: 150 }, goals: { calories: 'over', protein: 'met' }, notes: null }]);
+    });
+    test('body entries keep their time; units in display units', () => {
+      const body = oct.dailyTrackers.find(t => t.key === 'body');
+      assert.eq(body.mode, 'entries');
+      assert.eq(body.rows.map(r => [r.time, r.values]), [['07:00', { weight: 176.4, bodyFat: 18.5 }], ['07:00', { weight: 174.2, waist: 34 }]]);
+      assert.eq(body.columns.map(c => [c.key, c.unit]), [['weight', 'lb'], ['bodyFat', '%'], ['waist', 'in']]);
+    });
+    test('custom tracker lists every entry, leaving out missing values', () => {
+      const s = oct.dailyTrackers.find(t => t.key === 'steps');
+      assert.eq(s.rows.map(r => r.values), [{ steps: 8000 }, { felt: 'tired' }]);
+    });
+    test('unit conversion follows the display setting', () => {
+      const m = monthReport.buildMonthReport('2026-10', deps({ settings: { units: metric, weekStart: 1 } }));
+      assert.eq(m.workouts[0].exercises[0].sets[1].weight, 102.5);
+      assert.eq(m.goals.find(g => g.tracker === 'Water'), { tracker: 'Water', field: 'Amount', target: 2500, unit: 'ml', dir: 'atLeast' });
+      assert.eq(oct.goals.find(g => g.tracker === 'Water').target, 84.5);
+      assert.eq(m.dailyTrackers.find(t => t.key === 'hydration').rows[0].values.amount, 1000);
+      assert.eq(oct.dailyTrackers.find(t => t.key === 'hydration').rows[0].values.amount, 33.8);
+    });
+    test('supplements: days taken per item, unticked active items included', () => {
+      assert.eq(oct.checklists[0].items.map(i => [i.name, i.daysTaken, i.days.length]), [['Creatine', 2, 2], ['Zinc', 0, 0], ['Fish oil', 1, 1]]);
+      assert.eq(oct.checklists[0].daysCounted, 31);
+    });
+    test('goals and split', () => {
+      assert.eq(oct.goals.find(g => g.field === 'Calories'), { tracker: 'Food', field: 'Calories', target: 2000, unit: 'kcal', dir: 'atMost' });
+      assert.eq(oct.split.templates, [{ name: 'Push', exercises: ['Barbell Bench Press'], sessions: 1 }]);
+      assert.eq(oct.split.other, [{ name: 'Legs', sessions: 1 }]);
+    });
+    test('month stats', () => {
+      const s = oct.stats;
+      assert.eq([s.workouts, s.workingSets, s.volume, s.avgSessionMin], [2, 4, 6663, 64]);
+      assert.eq(s.bodyweight, { start: 176.4, end: 174.2, min: 174.2, max: 176.4, change: -2.2, weighIns: 2 });
+      assert.eq([s.avgCalories, s.avgProtein, s.avgWater, s.avgSleepMin], [2200, 150, 33.8, null]);
+      assert.eq([s.streakAtEnd, s.longestStreak], [2, 2]);
+      assert.eq(s.goalDays.map(g => [g.field, g.met, g.days]), [['Calories', 0, 1], ['Protein', 1, 1], ['Amount', 0, 1]]);
+    });
+    test('vs previous month: deltas only when that month has data', () => {
+      const v = oct.vsPrevious;
+      assert.eq(v.month, '2026-09');
+      assert.eq([v.stats.workouts, v.deltas.workouts, v.deltas.workingSets, v.deltas.bodyweightEnd], [1, 1, 3, -4.4]);
+      assert.eq(monthReport.buildMonthReport('2026-09', deps()).vsPrevious, null);
+    });
+    test('an empty month is flagged and has nothing in it', () => {
+      const r = monthReport.buildMonthReport('2026-06', deps());
+      assert.eq([r.empty, r.workouts.length, r.weeklySets, r.dailyTrackers.length, r.checklists.length, r.vsPrevious, r.stats.bodyweight],
+        [true, 0, null, 0, 0, null, null]);
+      clean(r);
+    });
+    test('no undefined or NaN with an empty deps object', () => clean(monthReport.buildMonthReport('2026-10', { today: '2026-11-01', now: 'x' })));
+
+    /* ── Markdown ── */
+    const md = monthReport.renderReportMarkdown(oct);
+    const noJunk = text => {
+      const bad = text.match(/\b(undefined|NaN|null|Infinity)\b|\[object/);
+      if (bad) throw new Error(`found "${bad[0]}" near: ${text.slice(Math.max(0, bad.index - 60), bad.index + 20)}`);
+    };
+
+    test('markdown: golden output for a small month', () => {
+      const g = {
+        entries: [
+          log('workout', '2026-09-15', '09:00', { name: 'Push', exercises: [{ exerciseId: BENCH, sets: [set(100, 5)] }] }),
+          log('workout', '2026-10-01', '08:00', { name: 'Push', durationMin: 64, exercises: [
+            { exerciseId: BENCH, notes: 'paused', sets: [set(60, 10, { setType: 'warmup' }), set(102.5, 5, { rpe: 8 })] },
+            { exerciseId: 'ex-pull-up', sets: [set(null, 15)] }] }, { notes: 'Good | fast\nslept well' }),
+          log('body', '2026-10-02', '07:00', { weight: 80 }, { notes: 'after | coffee\nfasted' }),
+        ],
+        trackers: schema.BUILTIN_TRACKERS.filter(t => t.key === 'workout' || t.key === 'body'), exercises: schema.BUILTIN_EXERCISES,
+        settings: { units: metric, weekStart: 1 }, today: '2026-11-01', now: '2026-11-01T10:00:00.000-07:00', appVersion: 'v16', timezone: 'America/Los_Angeles',
+      };
+      const expected = String.raw`# Health Log report — October 2026
+
+This is my personal training and health log for October 2026, exported from my Health Log app. I logged something on 2 of 31 days.
+
+Units: weight kg, water ml, distance km, body measurements cm. Times are local (America/Los_Angeles); weeks start on Monday.
+
+Effort per set: RPE = rate of perceived exertion (10 = maximal effort).
+
+Please analyze my progress, point out what's working and what's lagging, and suggest specific changes for next month. Ask me questions if the data looks incomplete.
+
+## How to read this
+
+- Weights are per set, in kg. "BW" = bodyweight set (no added weight); BW sets are not counted in volume.
+- Volume = weight × reps over working and failure sets; warm-ups, drop sets and BW sets are excluded.
+- Est. 1RM (e1RM) uses the Epley formula and is only calculated for sets of 12 reps or fewer; "—" means no set qualified (all over 12 reps, or bodyweight only).
+- PR = personal record against every earlier session (heaviest weight, e1RM, most reps at that weight or heavier, or session volume). An exercise's first-ever session is a baseline, not a PR.
+- Weekly sets = working and failure sets per muscle; secondary muscles count as half a set. "partial" weeks overlap another month, so only their days in October 2026 are counted.
+
+## Summary
+
+- Days with a log: 2 of 31
+- Workouts: 1 (0.2 per week), average 1h 04m
+- Working sets: 2; volume 513 kg
+- PRs: 1 exercise
+- Logging streak: longest 2 days in the month; 0 days running at month end
+- Bodyweight: 80 kg (1 weigh-in)
+
+### Compared with September 2026
+
+| Metric | October 2026 | September 2026 | Change |
+| --- | --- | --- | --- |
+| Days with a log | 2 | 1 | +1 |
+| Workouts | 1 | 1 | 0 |
+| Workouts per week | 0.2 | 0.2 | 0 |
+| Working sets | 2 | 1 | +1 |
+| Volume (kg) | 513 | 500 | +13 |
+| Average workout (min) | 64 |  |  |
+| Bodyweight at month end (kg) | 80 |  |  |
+
+## Goals & split
+
+| Workout (no template) | Sessions this month |
+| --- | --- |
+| Push | 1 |
+
+## Exercise progress
+
+| Exercise | Sessions | Best e1RM (kg) | Best e1RM before this month (kg) | Change (kg) | Working sets | Volume (kg) | Top set (kg × reps) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Barbell Bench Press | 1 | 120 | 117 | +3 | 1 | 513 | 102.5 × 5 |
+| Pull-up | 1 | — | first month |  | 1 | 0 | BW × 15 |
+
+## Weekly sets per muscle
+
+Target for every muscle: 10–20 sets per week.
+
+| Muscle | Sep 28–Oct 4 (partial) | Oct 5–11 | Oct 12–18 | Oct 19–25 | Oct 26–Nov 1 (partial) |
+| --- | --- | --- | --- | --- | --- |
+| Chest | 1 | 0 | 0 | 0 | 0 |
+| Front delts | 0.5 | 0 | 0 | 0 | 0 |
+| Lats | 1 | 0 | 0 | 0 | 0 |
+| Upper back | 0.5 | 0 | 0 | 0 | 0 |
+| Biceps | 0.5 | 0 | 0 | 0 | 0 |
+| Triceps | 0.5 | 0 | 0 | 0 | 0 |
+
+## Body & daily trackers
+
+### Body (every entry)
+
+| Date | Time | Bodyweight (kg) | Notes |
+| --- | --- | --- | --- |
+| Fri Oct 2 | 07:00 | 80 | after \| coffee / fasted |
+
+## Every workout
+
+One line per exercise: primary muscles in brackets, then every set in order as weight×reps in kg. Unlabelled sets are working sets; warm-up, drop and failure sets are labelled. "@RPE 8" and "RIR 2" are the logged effort; [PR: …] marks a set that set a personal record.
+
+### Thu Oct 1 — Push (1h 04m)
+
+08:00 · 2 working sets · volume 513 kg
+
+Notes: Good | fast / slept well
+
+- **Barbell Bench Press** (Chest): warm-up 60×10, 102.5×5 @RPE 8 [PR: weight, e1RM] — Note: paused. PR: session volume 513 kg.
+- **Pull-up** (Lats): BW×15
+
+---
+
+Generated 2026-11-01 10:00 by Health Log v16.
+`;
+      const actual = monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', g));
+      if (actual !== expected) {
+        const a = actual.split('\n');
+        const e = expected.split('\n');
+        const i = a.findIndex((line, k) => line !== e[k]);
+        throw new Error(`first difference at line ${i + 1}\n  expected ${JSON.stringify(e[i])}\n  actual   ${JSON.stringify(a[i])}`);
+      }
+    });
+    test('markdown: no undefined / NaN / null, in lb and in kg', () => {
+      noJunk(md);
+      noJunk(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', deps({ settings: { units: metric, weekStart: 0, effort: 'rir' } }))));
+      noJunk(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-10', { today: '2026-11-01', now: 'x' })));
+    });
+    test('markdown: goal marks only on missed days; single goals go by tracker name', () => {
+      assert.ok(md.includes('| Thu Oct 1 | Oats; Chicken bowl | 2,200 (over) | 150 |'), 'food row');
+      assert.ok(md.includes('Goals met (days met / days logged): Calories 0/1, Protein 1/1, Water 0/1'), 'goals line');
+      assert.ok(md.includes('| Water | at least 84.5 oz |'), 'goal table');
+      assert.ok(md.includes('| Sleep | at least 8h 00m |'), 'duration goal');
+    });
+    test('markdown: e1RM over 12 reps prints "—" and the header explains it', () => {
+      assert.ok(/\| Back Squat \| 1 \| — \| first month \|/.test(md), 'squat row');
+      assert.ok(md.includes('only calculated for sets of 12 reps or fewer'));
+    });
+    test('markdown: supplements list the shorter of taken / missed days', () => {
+      assert.ok(md.includes('| Creatine | 5 g | 2 of 31 (6%) | taken 1, 2 |'), 'creatine');
+      assert.ok(md.includes('| Zinc |  | 0 of 31 (0%) | none |'), 'zinc');
+    });
+    test('markdown: template split, old workouts listed as "(no template)"', () => {
+      assert.ok(md.includes('| Push | Barbell Bench Press | 1 |'));
+      assert.ok(md.includes('| Legs | (no template) | 1 |'));
+      assert.ok(md.includes('### Sat Oct 31 — Legs\n'), 'no duration in brackets when unknown');
+    });
+    test('markdown: turning sections off drops their headings', () => {
+      const off = monthReport.renderReportMarkdown(oct, { sections: { workouts: false, progress: false, weekly: false, daily: false, supplements: false, previous: false } });
+      for (const h of ['## Every workout', '## Exercise progress', '## Weekly sets', '## Body & daily', '## Supplements', '### Compared with']) assert.ok(!off.includes(h), h);
+      assert.ok(!off.includes('partial'), 'weekly explanation goes with the section');
+      assert.ok(off.includes('## Summary') && off.includes('## Goals & split'));
+      for (const h of ['## Every workout', '## Exercise progress', '## Weekly sets', '## Body & daily', '## Supplements', '### Compared with']) assert.ok(md.includes(h), `full report has ${h}`);
+    });
+    test('markdown: one line per exercise keeps every set, effort, PR and note', () => {
+      assert.ok(md.includes('- **Barbell Bench Press** (Chest): warm-up 132.3×10, 226×5 @RPE 8 [PR: weight, e1RM], 226×4 @RPE 9 — Note: paused. PR: session volume 2,034 lb.\n'), 'bench line');
+      assert.ok(md.includes('- **Pull-up** (Lats): BW×10\n'), 'pull-up line');
+      assert.ok(md.includes('Notes: Felt strong\n'), 'session notes');
+      const r = monthReport.buildMonthReport('2026-10', deps({ entries: [log('workout', '2026-10-09', '18:00', { name: 'Arms', exercises: [
+        { exerciseId: 'ex-ez-bar-curl', notes: 'elbow | ok\nnext time 3 sets', sets: [
+          set(40, 8, { rir: 2 }), set(40, 6, { setType: 'failure', rpe: 10 }), set(30, 10, { setType: 'drop' }), set(25, 12, { done: false })] },
+      ] })] }));
+      assert.ok(monthReport.renderReportMarkdown(r).includes(
+        '- **EZ-Bar Curl** (Biceps): 88.2×8 RIR 2, failure 88.2×6 @RPE 10, drop 66.1×10, 55.1×12 (not ticked) — Note: elbow | ok / next time 3 sets.\n'));
+    });
+    test('markdown: body fat and tape measurements get their own table', () => {
+      assert.ok(md.includes('### Body (every entry)\n\n| Date | Time | Bodyweight (lb) |\n| --- | --- | --- |\n| Fri Oct 2 | 07:00 | 176.4 |\n| Fri Oct 30 | 07:00 | 174.2 |\n'), 'body table');
+      assert.ok(md.includes('### Measurements (every entry)\n\n| Date | Time | Body fat (%) | Waist (in) |\n| --- | --- | --- | --- |\n| Fri Oct 2 | 07:00 | 18.5 |  |\n| Fri Oct 30 | 07:00 |  | 34 |\n'), 'measurements table');
+    });
+    test('markdown: PRs are counted per exercise in the summary', () => {
+      assert.eq(oct.stats.prExercises, 1);
+      assert.ok(md.includes('- PRs: 1 exercise\n'));
+    });
+    test('workouts per week: hidden before day 14 of a month in progress, everywhere', () => {
+      const early = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-10' }));
+      assert.eq([early.meta.inProgress, early.stats.avgWeeklySessions], [true, null]);
+      const text = monthReport.renderReportMarkdown(early);
+      assert.ok(text.includes('- Workouts: 2, average 1h 04m\n'), 'summary without a weekly rate');
+      assert.ok(!text.includes('per week)') && !text.includes('Workouts per week'), 'no rate in the summary or the comparison table');
+      assert.ok(text.includes('### Compared with September 2026'), 'the comparison table itself stays');
+      const day14 = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-14' }));
+      assert.eq(day14.stats.avgWeeklySessions, 1);
+      assert.ok(monthReport.renderReportMarkdown(day14).includes('| Workouts per week | 1 | 0.2 | +0.8 |'));
+      assert.eq(oct.stats.avgWeeklySessions, 0.5, 'a finished month always has it');
+      assert.ok(md.includes('| Workouts per week |'));
+    });
+    test('weekly sets: weeks starting after today are left out, with a note', () => {
+      const mid = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-15' }));
+      assert.eq(mid.weeklySets.weeks.map(w => w.start), ['2026-09-28', '2026-10-05', '2026-10-12'], 'Oct 19 and Oct 26 start after today');
+      assert.eq(mid.weeklySets.futureWeeks, 2);
+      assert.ok(!mid.weeklySets.rows.some(r => r.muscle === 'Quads'), 'no all-zero rows from hidden weeks');
+      const text = monthReport.renderReportMarkdown(mid);
+      assert.ok(text.includes('| Muscle | Sep 28–Oct 4 (partial) | Oct 5–11 | Oct 12–18 |\n'), 'header');
+      assert.ok(text.includes('|\n\nWeeks after today are not shown.\n'), 'note right under the table');
+      assert.eq(oct.weeklySets.futureWeeks, 0);
+      assert.ok(!md.includes('Weeks after today'), 'no note for a finished month');
+    });
+    test('markdown: the user goal goes at the top as a quote', () => {
+      const r = monthReport.buildMonthReport('2026-10', deps({ settings: { units: imperial, exportGoal: 'Lean bulk to 185 lb\nBench 275 by March' } }));
+      assert.ok(monthReport.renderReportMarkdown(r).includes('## My goal\n\n> Lean bulk to 185 lb\n> Bench 275 by March\n'));
+    });
+    test('markdown: an empty month is a short note; size helper counts UTF-8 bytes', () => {
+      assert.eq(monthReport.renderReportMarkdown(monthReport.buildMonthReport('2026-06', deps())), '# Health Log report — June 2026\n\nNo data was logged in June 2026.\n');
+      assert.eq(monthReport.byteSize('a—b'), 5);
+      assert.eq(monthReport.SIZE_WARN_BYTES, 256000);
+    });
+  });
+
+  /* ════════════════════════════════════
+     FILE HAND-OFF — share / download / copy, with the browser APIs faked
+     ════════════════════════════════════ */
+  suite('File hand-off: backup, share, download, copy', () => {
+    const { data, backup, claudeExport } = HL;
+    const own = (obj, key, value) => Object.defineProperty(obj, key, { value, configurable: true, writable: true });
+
+    // Fakes navigator.canShare / share / clipboard, downloads and execCommand for one test
+    async function withBrowser({ canShare = () => false, share, clipboard, execCommand } = {}, fn) {
+      const seen = { shared: [], downloads: [], copied: [] };
+      own(navigator, 'canShare', canShare);
+      own(navigator, 'share', share || (async ({ files }) => { seen.shared.push(files[0]); }));
+      own(navigator, 'clipboard', clipboard);
+      const create = URL.createObjectURL;
+      const click = HTMLAnchorElement.prototype.click;
+      const exec = document.execCommand;
+      URL.createObjectURL = blob => { seen.downloads.push({ file: blob }); return 'blob:test'; };
+      HTMLAnchorElement.prototype.click = function () { Object.assign(seen.downloads.at(-1), { name: this.download, href: this.getAttribute('href') }); };
+      document.execCommand = execCommand || (() => false);
+      try { await fn(seen); } finally {
+        delete navigator.canShare;
+        delete navigator.share;
+        delete navigator.clipboard;
+        URL.createObjectURL = create;
+        HTMLAnchorElement.prototype.click = click;
+        document.execCommand = exec;
+      }
+    }
+
+    /* ── The JSON backup, through the real exportBackup ── */
+    const stores = { entries: [{ id: 'e1', type: 'body', dayKey: '2026-10-02', timestamp: '2026-10-02T07:00:00.000-07:00', values: { weight: 80 }, updatedAt: '2026-10-02T14:00:00.000Z' }] };
+    const settings = { units: imperial, theme: 'dark', exportGoal: 'Bench 275', exportSections: { workouts: false } };
+    let metaWrites = [];
+    Object.assign(HL.repo, { snapshot: () => stores, getSettings: () => settings, setMeta: (k, v) => metaWrites.push(k) });
+
+    // Exactly what exportBackup handed to deliver() before the split: this name, this type, JSON.stringify(buildBackup(...))
+    async function assertBackupFile(file) {
+      assert.eq(file.name, `healthlog-backup-${util.dayKey()}.json`);
+      assert.eq(file.type, 'application/json');
+      const text = await file.text();
+      assert.eq(text, JSON.stringify(backup.buildBackup(stores, settings, JSON.parse(text).exportedAt)));
+      assert.eq(JSON.parse(text).settings.exportGoal, 'Bench 275', 'new settings fields travel in the backup');
+    }
+
+    test('backup: shared as the same JSON file as before', () => withBrowser({ canShare: () => true }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.shared.length, seen.downloads.length, metaWrites], [1, 0, ['lastExportAt']]);
+      await assertBackupFile(seen.shared[0]);
+    }));
+    test('backup: downloaded as the same file when sharing files isn’t possible', () => withBrowser({}, async seen => {
+      await data.exportBackup();
+      assert.eq([seen.shared.length, seen.downloads.length, seen.downloads[0].name, seen.downloads[0].href], [0, 1, `healthlog-backup-${util.dayKey()}.json`, 'blob:test']);
+      await assertBackupFile(seen.downloads[0].file);
+    }));
+    test('backup: closing the share sheet does nothing (no download, not marked as backed up)', () => withBrowser({
+      canShare: () => true, share: async () => { throw new DOMException('closed', 'AbortError'); },
+    }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.downloads.length, metaWrites], [0, []]);
+    }));
+    test('backup: a refused share still falls back to a download', () => withBrowser({
+      canShare: () => true, share: async () => { throw new DOMException('no', 'NotAllowedError'); },
+    }, async seen => {
+      metaWrites = [];
+      await data.exportBackup();
+      assert.eq([seen.downloads.length, metaWrites], [1, ['lastExportAt']]);
+      await assertBackupFile(seen.downloads[0].file);
+    }));
+
+    /* ── The pieces the Export for Claude buttons use ── */
+    test('shareFile: shared / cancelled / failed', () => withBrowser({}, async () => {
+      const file = data.makeFile('health-log-2026-10.md', '# hi', 'text/markdown');
+      own(navigator, 'share', async () => {});
+      assert.eq(await data.shareFile(file), 'shared');
+      own(navigator, 'share', async () => { throw new DOMException('x', 'AbortError'); });
+      assert.eq(await data.shareFile(file), 'cancelled');
+      own(navigator, 'share', async () => { throw new TypeError('x'); });
+      assert.eq(await data.shareFile(file), 'failed');
+    }));
+    test('shareFile calls navigator.share synchronously (iOS needs the tap’s user gesture)', () => withBrowser({}, async () => {
+      let called = false;
+      own(navigator, 'share', async () => { called = true; });
+      const pending = data.shareFile(data.makeFile('a.md', 'x', 'text/markdown'));
+      assert.ok(called, 'share was not called before the first await');
+      await pending;
+    }));
+    test('share type: Markdown, else plain text, else none (button hidden)', () => {
+      const run = accept => {
+        own(navigator, 'canShare', ({ files }) => accept.includes(files[0].type));
+        try { return claudeExport.shareType(); } finally { delete navigator.canShare; }
+      };
+      assert.eq([run(['text/markdown', 'text/plain']), run(['text/plain']), run([])], ['text/markdown', 'text/plain', null]);
+    });
+    test('copyText: clipboard API first', () => withBrowser({ clipboard: { writeText: async t => { copiedText = t; } } }, async seen => {
+      assert.eq(await data.copyText('# report'), true);
+      assert.eq(copiedText, '# report');
+      assert.eq(seen.downloads.length, 0);
+    }));
+    let copiedText = null;
+    test('copyText: falls back to execCommand when the clipboard API refuses', () => withBrowser({
+      clipboard: { writeText: async () => { throw new DOMException('no', 'NotAllowedError'); } },
+      execCommand: cmd => { copiedText = cmd === 'copy' ? document.querySelector('textarea[aria-hidden]')?.value : null; return true; },
+    }, async () => {
+      copiedText = null;
+      assert.eq(await data.copyText('fallback text'), true);
+      assert.eq(copiedText, 'fallback text');
+      assert.ok(!document.querySelector('body > textarea'), 'temporary textarea removed');
+    }));
+    test('copyText: no clipboard API at all, and execCommand fails → false', () => withBrowser({ execCommand: () => false }, async () => {
+      assert.eq(await data.copyText('x'), false);
+    }));
+
+    test('Export for Claude builds health-log-YYYY-MM.md synchronously from the repo', () => {
+      const at = (k, t) => `${k}T${t}:00.000-07:00`;
+      const entries = [{ id: 'b1', type: 'body', dayKey: '2026-10-02', timestamp: at('2026-10-02', '07:00'), values: { weight: 80 }, notes: '' }];
+      Object.assign(HL.repo, {
+        entries: () => entries, trackers: () => schema.BUILTIN_TRACKERS, all: () => [],
+        getSettings: () => ({ units: metric, weekStart: 1, exportGoal: 'Cut to 78 kg' }),
+      });
+      const out = claudeExport.build('2026-10');
+      assert.eq(out.filename, 'health-log-2026-10.md');
+      assert.ok(out.text.startsWith('# Health Log report — October 2026\n'));
+      assert.ok(out.text.includes('> Cut to 78 kg'));
+      assert.eq(out.bytes, HL.monthReport.byteSize(out.text));
+      Object.assign(HL.repo, { getSettings: () => settings });
+    });
+    test('default month: last month when it has logs, else this month; months after this one never count', () => {
+      const e = k => ({ dayKey: k });
+      assert.eq(claudeExport.monthsWithData([e('2026-08-01'), e('2026-10-31'), e('2026-12-01'), { dayKey: '2026-09-03', source: { app: 'demo' } }], '2026-11'), ['2026-08', '2026-10']);
+      assert.eq(claudeExport.defaultMonth(['2026-08', '2026-10'], '2026-11'), '2026-10');
+      assert.eq(claudeExport.defaultMonth(['2026-08'], '2026-11'), '2026-11');
+    });
+  });
+
+  /* ════════════════════════════════════
      RUN
      ════════════════════════════════════ */
   const results = document.getElementById('results');
   let pass = 0, fail = 0;
-  for (const s of suites) {
-    const items = s.tests.map(t => {
-      try { t.fn(); pass++; return `<li class="pass">✓ ${util.esc(t.name)}</li>`; }
-      catch (err) { fail++; return `<li class="fail">✗ ${util.esc(t.name)}<pre>${util.esc(err.message)}</pre></li>`; }
-    });
-    results.insertAdjacentHTML('beforeend', `<h2>${util.esc(s.name)}</h2><ul>${items.join('')}</ul>`);
-  }
-  const summary = document.getElementById('summary');
-  summary.textContent = `${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed`;
-  summary.className = fail ? 'fail' : 'pass';
-  document.title = `${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail} — Health Log tests`;
+  // Tests may return a promise (the file hand-off ones); each runs to completion before the next
+  (async () => {
+    for (const s of suites) {
+      const items = [];
+      for (const t of s.tests) {
+        try { await t.fn(); pass++; items.push(`<li class="pass">✓ ${util.esc(t.name)}</li>`); }
+        catch (err) { fail++; items.push(`<li class="fail">✗ ${util.esc(t.name)}<pre>${util.esc(err.message)}</pre></li>`); }
+      }
+      results.insertAdjacentHTML('beforeend', `<h2>${util.esc(s.name)}</h2><ul>${items.join('')}</ul>`);
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = `${fail ? '✗' : '✓'} ${pass} passed, ${fail} failed`;
+    summary.className = fail ? 'fail' : 'pass';
+    document.title = `${fail ? 'FAIL' : 'PASS'} ${pass}/${pass + fail} — Health Log tests`;
+  })();
 })(globalThis.HL);
