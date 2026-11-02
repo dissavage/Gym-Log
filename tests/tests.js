@@ -1106,6 +1106,30 @@ Generated 2026-11-01 10:00 by Health Log v16.
       assert.eq(oct.stats.prExercises, 1);
       assert.ok(md.includes('- PRs: 1 exercise\n'));
     });
+    test('workouts per week: hidden before day 14 of a month in progress, everywhere', () => {
+      const early = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-10' }));
+      assert.eq([early.meta.inProgress, early.stats.avgWeeklySessions], [true, null]);
+      const text = monthReport.renderReportMarkdown(early);
+      assert.ok(text.includes('- Workouts: 2, average 1h 04m\n'), 'summary without a weekly rate');
+      assert.ok(!text.includes('per week)') && !text.includes('Workouts per week'), 'no rate in the summary or the comparison table');
+      assert.ok(text.includes('### Compared with September 2026'), 'the comparison table itself stays');
+      const day14 = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-14' }));
+      assert.eq(day14.stats.avgWeeklySessions, 1);
+      assert.ok(monthReport.renderReportMarkdown(day14).includes('| Workouts per week | 1 | 0.2 | +0.8 |'));
+      assert.eq(oct.stats.avgWeeklySessions, 0.5, 'a finished month always has it');
+      assert.ok(md.includes('| Workouts per week |'));
+    });
+    test('weekly sets: weeks starting after today are left out, with a note', () => {
+      const mid = monthReport.buildMonthReport('2026-10', deps({ today: '2026-10-15' }));
+      assert.eq(mid.weeklySets.weeks.map(w => w.start), ['2026-09-28', '2026-10-05', '2026-10-12'], 'Oct 19 and Oct 26 start after today');
+      assert.eq(mid.weeklySets.futureWeeks, 2);
+      assert.ok(!mid.weeklySets.rows.some(r => r.muscle === 'Quads'), 'no all-zero rows from hidden weeks');
+      const text = monthReport.renderReportMarkdown(mid);
+      assert.ok(text.includes('| Muscle | Sep 28–Oct 4 (partial) | Oct 5–11 | Oct 12–18 |\n'), 'header');
+      assert.ok(text.includes('|\n\nWeeks after today are not shown.\n'), 'note right under the table');
+      assert.eq(oct.weeklySets.futureWeeks, 0);
+      assert.ok(!md.includes('Weeks after today'), 'no note for a finished month');
+    });
     test('markdown: the user goal goes at the top as a quote', () => {
       const r = monthReport.buildMonthReport('2026-10', deps({ settings: { units: imperial, exportGoal: 'Lean bulk to 185 lb\nBench 275 by March' } }));
       assert.ok(monthReport.renderReportMarkdown(r).includes('## My goal\n\n> Lean bulk to 185 lb\n> Bench 275 by March\n'));

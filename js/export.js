@@ -14,6 +14,7 @@
   const DEFAULT_TARGET = [10, 20];
   // Built-ins shown as one row per day (totals / averages); every other entry tracker lists each entry
   const DAILY_TRACKERS = new Set(['nutrition', 'hydration', 'sleep', 'mood']);
+  const MIN_DAYS_FOR_WEEKLY_RATE = 14;
 
   const p2 = n => String(n).padStart(2, '0');
   const fin = v => typeof v === 'number' && Number.isFinite(v);
@@ -210,12 +211,14 @@
       };
     }).filter(Boolean).sort((a, b2) => a.name.localeCompare(b2.name));
 
-    /* ── Weekly sets per muscle: every week touching the month, sets dated inside it only ── */
+    /* ── Weekly sets per muscle: every week touching the month up to today, sets dated inside the month only ── */
     let weeklySets = null;
     if (monthWorkouts.length) {
       const tallies = domain.weeklyMuscleSets(monthWorkouts, exById, { weekStart });
       const weeks = [];
+      let futureWeeks = 0;   // weeks starting after today: not shown rather than shown as zeros
       for (let wk = util.weekStartOf(b.first, weekStart); wk <= b.last; wk = util.addDays(wk, 7)) {
+        if (wk > today) { futureWeeks++; continue; }
         const end = util.addDays(wk, 6);
         weeks.push({ start: wk, end, partial: wk < b.first || end > b.last });
       }
@@ -223,7 +226,7 @@
       const rows = schema.MUSCLES
         .map(m => ({ muscle: m.name, sets: weeks.map(w => rnd(tallies.get(w.start)?.[m.id] || 0, 1)), target: targets[m.id] || DEFAULT_TARGET }))
         .filter(r => r.sets.some(n => n > 0));
-      if (rows.length) weeklySets = { weeks, rows };
+      if (rows.length) weeklySets = { weeks, rows, futureWeeks };
     }
 
     /* ── Daily trackers (everything that isn't a workout or a checklist) ── */
@@ -356,7 +359,8 @@
         workingSets: sets.filter(domain.isWorkingSet).length,
         volume: mass(sum(sets.map(setVolume)), 0) ?? 0,
         avgSessionMin: rnd(mean(mins), 0),
-        avgWeeklySessions: days ? rnd(wos.length / (days / 7), 1) : null,
+        // A weekly rate from under two weeks of a month in progress says more about the calendar than the training
+        avgWeeklySessions: days >= MIN_DAYS_FOR_WEEKLY_RATE ? rnd(wos.length / (days / 7), 1) : null,
         avgCalories: rnd(dailyAvg('nutrition', 'calories'), 0),
         avgProtein: rnd(dailyAvg('nutrition', 'protein'), 0),
         avgWater: water == null ? null : units.display('volume', water, prefs),
@@ -587,7 +591,8 @@
       const rows = [
         ['Days with a log', stats.daysLogged, p.daysLogged, 'daysLogged', 0],
         ['Workouts', stats.workouts, p.workouts, 'workouts', 0],
-        ['Workouts per week', stats.avgWeeklySessions, p.avgWeeklySessions, 'avgWeeklySessions', 1],
+        // Only when this month has a rate of its own (not before day 14 of a month in progress)
+        ...(stats.avgWeeklySessions != null ? [['Workouts per week', stats.avgWeeklySessions, p.avgWeeklySessions, 'avgWeeklySessions', 1]] : []),
         ['Working sets', stats.workingSets, p.workingSets, 'workingSets', 0],
         [`Volume (${U.mass})`, stats.volume, p.volume, 'volume', 0],
         ['Average workout (min)', stats.avgSessionMin, p.avgSessionMin, 'avgSessionMin', 0],
@@ -646,6 +651,7 @@
       block(table(
         ['Muscle', ...w.weeks.map(weekLabel), ...(shared ? [] : ['Target per week'])],
         w.rows.map(r => [r.muscle, ...r.sets.map(n => num(n, 1)), ...(shared ? [] : [range(r)])])));
+      if (w.futureWeeks) block('Weeks after today are not shown.');
     }
 
     /* ── Daily trackers ── */
